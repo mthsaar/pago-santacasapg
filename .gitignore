@@ -1,0 +1,7 @@
+.DS_Store
+.firebase/
+*.log
+__pycache__/
+*.pyc
+escala_maternidade.db
+escala_maternidade.db-*

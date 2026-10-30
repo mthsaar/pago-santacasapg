@@ -1,0 +1,305 @@
+/* ==========================================================================
+   Santa Casa de Ponta Grossa - Escala Maternidade
+   Material 3 Expressive Design System (M3 Expressive)
+   Paleta Oficial: Azul Royal (#23298B), Vermelho Cruz (#E31E24) & Superfícies Tonais
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* Santa Casa PG Material 3 Expressive Color Tokens */
+  --md-sys-color-primary: #23298B;
+  --md-sys-color-on-primary: #FFFFFF;
+  --md-sys-color-primary-container: #E0E2FF;
+  --md-sys-color-on-primary-container: #000865;
+
+  --md-sys-color-secondary: #E31E24;
+  --md-sys-color-on-secondary: #FFFFFF;
+  --md-sys-color-secondary-container: #FFDAD6;
+  --md-sys-color-on-secondary-container: #410002;
+
+  --md-sys-color-surface: #F7F8FC;
+  --md-sys-color-surface-bright: #FFFFFF;
+  --md-sys-color-surface-container-low: #F0F2FA;
+  --md-sys-color-surface-container: #E8ECF7;
+  --md-sys-color-surface-container-high: #DEE3F1;
+  --md-sys-color-outline: #757684;
+  --md-sys-color-outline-variant: #C5C6D4;
+
+  /* Expressive Motion Curves */
+  --md-sys-motion-expressive: cubic-bezier(0.22, 1, 0.36, 1);
+  --md-sys-motion-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--md-sys-color-surface);
+  color: #1A1B25;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ==========================================================================
+   GARANTIA ABSOLUTA: Ocultar barras superiores no Mobile (< 768px)
+   Deixando apenas a barra de navegação inferior
+   ========================================================================== */
+@media (max-width: 767px) {
+  #top-header,
+  #top-subnav,
+  .desktop-only-bar {
+    display: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+  }
+
+  #bottom-nav {
+    display: flex !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 768px) {
+  #bottom-nav {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   PONTO VERDE "PLANTÃO AGORA" - Alinhamento Concêntrico Perfeito
+   ========================================================================== */
+@keyframes m3-pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.live-dot-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.live-dot-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background-color: #10b981;
+  animation: m3-pulse-ring 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+.live-dot-core {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: #10b981;
+  display: block;
+}
+
+/* ==========================================================================
+   ESCALA SEMANAL (ESTILO GOOGLE CALENDAR - COLUNA DE HORÁRIOS FIXA + SCROLL)
+   ========================================================================== */
+:root {
+  --sticky-col-width: 72px;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --sticky-col-width: 84px;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --sticky-col-width: 88px;
+  }
+}
+
+.week-scroll-container {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-padding-left: var(--sticky-col-width);
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.week-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.escala-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.sticky-time-col {
+  position: -webkit-sticky;
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  width: var(--sticky-col-width);
+  min-width: var(--sticky-col-width);
+  max-width: var(--sticky-col-width);
+  white-space: nowrap;
+  box-shadow: 3px 0 8px -2px rgba(35, 41, 139, 0.12);
+}
+
+.day-col {
+  width: var(--day-col-px, 98px);
+  min-width: var(--day-col-px, 98px);
+  max-width: var(--day-col-px, 98px);
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   FECHAMENTO MENSAL ESCROLÁVEL COM COLUNA DE PROFISSIONAL FIXA (STICKY)
+   ========================================================================== */
+.stats-scroll-container {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.stats-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.stats-scroll-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+}
+
+.sticky-stats-col {
+  position: -webkit-sticky;
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  min-width: 148px;
+  max-width: 185px;
+  white-space: nowrap;
+  box-shadow: 3px 0 8px -2px rgba(35, 41, 139, 0.12);
+}
+
+.stats-data-col {
+  white-space: nowrap;
+}
+
+/* Custom Scrollbar for inner elements */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c5c6d4;
+  border-radius: 9999px;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==========================================================================
+   Material 3 Expressive Components & Surfaces
+   ========================================================================== */
+.m3-card {
+  background: var(--md-sys-color-surface-bright);
+  border-radius: 24px;
+  border: 1px solid rgba(197, 198, 212, 0.55);
+  box-shadow: 0 2px 12px -2px rgba(35, 41, 139, 0.06);
+  transition: transform 0.25s var(--md-sys-motion-expressive), box-shadow 0.25s var(--md-sys-motion-expressive);
+}
+
+.m3-card-interactive:hover {
+  box-shadow: 0 8px 24px -4px rgba(35, 41, 139, 0.12);
+}
+
+.m3-pill-indicator {
+  transition: all 0.28s var(--md-sys-motion-spring);
+}
+
+/* Modal Animations */
+.modal-enter-active {
+  animation: m3-modal-in 0.28s var(--md-sys-motion-expressive) forwards;
+}
+
+@keyframes m3-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Print Optimization */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10pt;
+  }
+
+  .no-print,
+  nav,
+  header,
+  .btn-action,
+  #bottom-nav,
+  #toast-container,
+  #week-nav-pills {
+    display: none !important;
+  }
+
+  .week-scroll-container {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .week-slide {
+    margin-bottom: 16px !important;
+    page-break-inside: avoid;
+  }
+}

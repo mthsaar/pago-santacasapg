@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#23298B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Santa Casa PG">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Santa Casa PG - Escala</title>
+  
+  <!-- Favicon & App Icons (Santa Casa de Ponta Grossa) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=11">
+  <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=11">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=11">
+  <link rel="manifest" href="/manifest.json?v=11">
+  <link rel="stylesheet" href="/styles.css?v=11">
+
+  <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
+  <style>
+    @media (max-width: 767px) {
+      #top-header,
+      #top-subnav,
+      .desktop-only-bar {
+        display: none !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+      }
+    }
+  </style>
+  
+  <!-- Tailwind CSS CDN Configured with Santa Casa PG Material 3 Expressive Palette -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#F0F2FF',
+              100: '#E0E2FF',
+              200: '#C2C6FF',
+              300: '#9BA3FF',
+              400: '#6B75F2',
+              500: '#3D45B8',
+              600: '#2C34A0',
+              700: '#23298B', /* Azul Oficial Santa Casa PG */
+              800: '#1B2070',
+              900: '#11154E',
+              950: '#000865',
+            },
+            scred: {
+              50: '#FFF1F0',
+              100: '#FFDAD6',
+              200: '#FFB4AB',
+              500: '#EF4444',
+              600: '#E31E24', /* Vermelho Oficial Santa Casa PG */
+              700: '#B91C1C',
+              800: '#93000A',
+              900: '#410002',
+            },
+            m3: {
+              surface: '#F7F8FC',
+              containerLow: '#F0F2FA',
+              container: '#E8ECF7',
+              containerHigh: '#DEE3F1',
+              outline: '#757684',
+              outlineVariant: '#C5C6D4',
+            }
+          },
+          borderRadius: {
+            'm3-sm': '12px',
+            'm3-md': '16px',
+            'm3-lg': '24px',
+            'm3-xl': '28px',
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase SDK v10 (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="/firebase-config.js?v=4"></script>
+</head>
+<body class="bg-m3-surface text-slate-900 antialiased min-h-screen flex flex-col pb-24 md:pb-8">
+
+  <!-- ================= TOP HEADER (APENAS DESKTOP >= 768px) ================= -->
+  <header id="top-header" class="desktop-only-bar hidden md:block bg-white/95 backdrop-blur-md border-b border-m3-outlineVariant/50 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="flex items-center justify-between h-20">
+        
+        <!-- Logo Oficial Santa Casa PG e Identificação (Sem badge de nuvem) -->
+        <div class="flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-white p-1 border border-m3-outlineVariant/60 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+            <img src="/logo.png?v=4" alt="Santa Casa de Ponta Grossa" class="w-full h-full object-contain">
+          </div>
+          <div>
+            <h1 id="header-hospital-name" class="font-extrabold text-brand-950 text-lg tracking-tight leading-tight">
+              Santa Casa de Ponta Grossa
+            </h1>
+            <p id="header-unit-name" class="text-xs font-semibold text-brand-700">
+              Maternidade • Escala de Plantão e Rotina Obstétrica
+            </p>
+          </div>
+        </div>
+
+        <!-- Relógio em Tempo Real e Passagem de Plantão (19h / 07h) -->
+        <div class="hidden lg:flex items-center gap-4 bg-m3-containerLow px-4 py-2 rounded-full border border-m3-outlineVariant/50 text-xs">
+          <div class="flex items-center gap-2 text-brand-950 font-bold">
+            <i data-lucide="clock" class="w-4 h-4 text-scred-600"></i>
+            <span id="live-clock" class="font-mono text-sm">--:--:--</span>
+          </div>
+          <div class="h-3.5 w-px bg-m3-outlineVariant"></div>
+          <div class="text-slate-600 flex items-center gap-1.5">
+            <span>Troca <strong>19h / 07h</strong>:</span>
+            <span id="countdown-text" class="text-brand-700 font-extrabold">calculando...</span>
+          </div>
+        </div>
+
+        <!-- Switch Único Consulta / Editor + Configurações (Sem ícone de impressora) -->
+        <div class="flex items-center gap-2.5">
+          <button id="mode-switch-btn" onclick="app.handleModeToggleClick()" type="button"
+                  title="Alternar entre Modo Consulta e Modo Editor"
+                  class="inline-flex items-center bg-m3-container p-1 rounded-full border border-m3-outlineVariant/60 transition-all shadow-inner cursor-pointer">
+            <span id="switch-opt-consulta" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-white text-brand-950 shadow-sm transition-all">
+              <i data-lucide="eye" class="w-3.5 h-3.5 text-brand-700"></i>
+              <span>Consulta</span>
+            </span>
+            <span id="switch-opt-editor" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-600 transition-all">
+              <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+              <span>Editor</span>
+            </span>
+          </button>
+
+          <!-- Botão de Configurações (Apenas no Modo Editor) -->
+          <button id="btn-settings" onclick="app.openSettingsModal()" title="Configurações e Nuvem"
+                  class="hidden flex items-center justify-center w-10 h-10 text-slate-600 hover:text-brand-800 hover:bg-m3-container rounded-full transition">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= SUB-BARRA DE NAVEGAÇÃO M3 EXPRESSIVE (APENAS DESKTOP >= 768px) ================= -->
+  <div id="top-subnav" class="desktop-only-bar hidden md:block bg-m3-surface/90 backdrop-blur-md border-b border-m3-outlineVariant/40 sticky top-20 z-20 no-print">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="flex items-center justify-between py-2.5 gap-3">
+        
+        <!-- Abas Principais M3 Pill Tabs -->
+        <div class="flex items-center gap-1.5 bg-m3-container p-1.5 rounded-full text-xs sm:text-sm font-semibold">
+          <button onclick="app.switchView('spreadsheet')" id="tab-spreadsheet" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
+            <i data-lucide="calendar" class="w-4 h-4"></i>
+            <span>Escala</span>
+          </button>
+          <button onclick="app.switchView('now')" id="tab-now" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
+            <span class="live-dot-wrapper">
+              <span class="live-dot-ping"></span>
+              <span class="live-dot-core"></span>
+            </span>
+            <span>Plantão Agora</span>
+          </button>
+          <button onclick="app.switchView('doctors')" id="tab-doctors" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
+            <i data-lucide="users" class="w-4 h-4"></i>
+            <span>Corpo Clínico (<span id="count-doctors">24</span>)</span>
+          </button>
+          <button onclick="app.switchView('stats')" id="tab-stats" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
+            <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+            <span>Fechamento</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONTEÚDO PRINCIPAL ================= -->
+  <main class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 pt-2.5 pb-6 md:py-6 flex-1 w-full">
+
+    <!-- Cabeçalho Mobile Compacto: Ícone e Título maiores na mesma linha do Switch Consulta / Editor -->
+    <div id="mobile-mode-bar" class="md:hidden mb-3 flex items-center justify-between gap-2 px-1">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <img src="/logo.png?v=11" alt="Santa Casa PG" class="w-10 h-10 rounded-2xl object-contain bg-white p-1 border border-m3-outlineVariant/60 shrink-0 shadow-sm">
+        <div class="text-left leading-tight min-w-0">
+          <h1 class="text-sm font-extrabold text-brand-950 tracking-tight truncate">Santa Casa de Ponta Grossa</h1>
+          <p class="text-[11px] font-semibold text-brand-700 truncate">Maternidade • Escala de Plantão</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1 shrink-0">
+        <button id="mobile-mode-switch-btn" onclick="app.handleModeToggleClick()" type="button"
+                title="Alternar entre Modo Consulta e Modo Editor"
+                class="inline-flex items-center bg-m3-container p-0.5 rounded-full border border-m3-outlineVariant/60 transition-all shadow-inner cursor-pointer">
+          <span id="mobile-switch-opt-consulta" class="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-white text-brand-950 shadow-sm transition-all">
+            <i data-lucide="eye" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Consulta</span>
+          </span>
+          <span id="mobile-switch-opt-editor" class="flex items-center justify-center px-2 py-1 rounded-full text-[11px] font-semibold text-slate-600 transition-all">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+          </span>
+        </button>
+
+        <button id="mobile-btn-settings" onclick="app.openSettingsModal()" title="Configurações e Nuvem"
+                class="hidden flex items-center justify-center w-7 h-7 text-brand-950 bg-white hover:bg-m3-container rounded-full border border-m3-outlineVariant/60 shadow-xs transition">
+          <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= 1. ABA: ESCALA (SEMANAL + DIÁRIA INTEGRADA) ================= -->
+    <section id="view-spreadsheet" class="view-section space-y-3">
+
+      <!-- Barra de Controle da Escala (Título "Escala" + Seletor Semana/Dia próximo às setas) -->
+      <div class="m3-card px-3.5 py-2.5 sm:px-5 sm:py-3.5 flex flex-col gap-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          
+          <!-- Identidade + Título "Escala" e Período -->
+          <div class="flex items-center gap-2 sm:gap-3">
+            <div class="flex items-center gap-1">
+              <button onclick="app.handlePeriodPrev()" title="Período anterior" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+              </button>
+              <div class="text-left px-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-brand-100 text-brand-800">Escala</span>
+                  <h2 id="calendar-month-title" class="text-base sm:text-xl font-extrabold tracking-tight text-brand-950 capitalize leading-tight">
+                    Novembro 2026
+                  </h2>
+                </div>
+                <p id="calendar-week-subtitle" class="text-[11px] text-brand-700 font-semibold leading-none mt-1">
+                  Deslize para navegar entre as semanas
+                </p>
+              </div>
+              <button onclick="app.handlePeriodNext()" title="Próximo período" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+                <i data-lucide="chevron-right" class="w-5 h-5"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Modo de Visualização (Semana | Dia) PRÓXIMO ÀS SETAS -->
+          <div class="flex items-center gap-1.5 sm:gap-2 ml-auto">
+            <!-- Switch de Modo de Visualização: Semana vs Dia -->
+            <div class="inline-flex items-center bg-m3-container p-0.5 rounded-full border border-m3-outlineVariant/50">
+              <button type="button" id="escala-mode-week" onclick="app.setEscalaSubMode('week')"
+                      class="px-3 py-1 rounded-full text-xs font-extrabold transition-all bg-brand-700 text-white shadow-sm">
+                Semana
+              </button>
+              <button type="button" id="escala-mode-day" onclick="app.setEscalaSubMode('day')"
+                      class="px-3 py-1 rounded-full text-xs font-bold transition-all text-slate-600 hover:text-brand-950">
+                Dia
+              </button>
+            </div>
+
+            <!-- Botão Hoje -->
+            <button onclick="app.handleTodayClick()" title="Ir para hoje"
+                    class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-brand-100 hover:bg-brand-200 text-brand-950 text-xs font-extrabold transition">
+              <i data-lucide="calendar-check-2" class="w-3.5 h-3.5 text-brand-700"></i>
+              <span class="hidden sm:inline">Hoje</span>
+            </button>
+
+            <!-- Setas de Navegação Rápida (Semana ou Dia) -->
+            <div class="flex items-center bg-m3-container rounded-full p-0.5">
+              <button onclick="app.handleArrowPrev()" title="Anterior"
+                      class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+              </button>
+              <button onclick="app.handleArrowNext()" title="Próximo"
+                      class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
+                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-barra de Pílulas de Semanas (no modo Semana) OU Seletor de Data (no modo Dia) -->
+        <div class="flex items-center justify-between gap-2 pt-1 border-t border-m3-outlineVariant/30">
+          <!-- Pílulas das semanas -->
+          <div id="week-nav-pills" class="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5"></div>
+
+          <!-- Seletor direto de data (exibido no modo Dia) -->
+          <div id="day-picker-bar" class="hidden flex items-center gap-2 py-0.5">
+            <span class="text-xs font-bold text-slate-500">Selecionar data:</span>
+            <input type="date" id="daily-picker" onchange="app.selectDate(this.value)" 
+                   class="text-xs bg-m3-containerLow border border-m3-outlineVariant rounded-full px-3 py-1 font-bold text-brand-950">
+          </div>
+
+          <!-- Legenda Compacta Padronizada (Desktop) -->
+          <div class="hidden lg:flex items-center gap-2 text-[11px] font-semibold text-slate-600 shrink-0 ml-auto">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-900 border border-brand-200">
+              <span class="w-2 h-2 rounded-full bg-brand-600"></span>Rotineiro 07-13h
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-300">
+              <span class="w-2 h-2 rounded-full bg-slate-500"></span>Diurno 07-13h / 13-19h
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-scred-50 text-scred-800 border border-scred-200">
+              <span class="w-2 h-2 rounded-full bg-scred-600"></span>Reforço 19-23h
+            </span>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>Noturno 19-07h
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODO 1: PLANILHA ÚNICA COM SEMANAS ESCROLÁVEIS (GOOGLE CALENDAR WEEK VIEW) -->
+      <div id="escala-week-wrapper" class="m3-card overflow-hidden">
+        <div id="calendar-table-container"></div>
+
+        <!-- Barra de Progresso de Rolagem Horizontal (Escala Semanal) -->
+        <div class="px-3.5 py-2 bg-m3-containerLow/90 border-t border-m3-outlineVariant/50 flex items-center gap-3">
+          <div class="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 uppercase tracking-wider shrink-0">
+            <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
+            <span>Deslize</span>
+          </div>
+          <div id="week-scroll-track" onclick="app.handleTrackClick(event, 'week-scroll-viewport')"
+               class="relative flex-1 h-2 bg-brand-100 rounded-full overflow-hidden cursor-pointer">
+            <div id="week-scroll-bar" class="h-full bg-gradient-to-r from-brand-600 to-brand-800 rounded-full transition-[width] duration-75" style="width: 20%;"></div>
+          </div>
+          <span id="week-scroll-pct" class="text-[10px] font-extrabold text-brand-950 font-mono w-8 text-right shrink-0">20%</span>
+        </div>
+      </div>
+
+      <!-- MODO 2: VISÃO DIÁRIA INTEGRADA DENTRO DE ESCALA -->
+      <div id="escala-day-wrapper" class="hidden space-y-3">
+        <div id="daily-slots-container" class="space-y-3"></div>
+      </div>
+
+    </section>
+
+    <!-- ================= 2. ABA: PLANTÃO AGORA ================= -->
+    <section id="view-now" class="view-section space-y-5 hidden">
+      
+      <!-- Hero Card Material 3 Expressive com Paleta Santa Casa PG -->
+      <div class="bg-gradient-to-br from-brand-800 via-brand-700 to-brand-950 rounded-m3-xl p-5 sm:p-7 text-white shadow-xl relative overflow-hidden">
+        <div class="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-scred-600/20 blur-2xl pointer-events-none"></div>
+        <div class="absolute -left-10 -bottom-10 w-44 h-44 rounded-full bg-brand-400/20 blur-2xl pointer-events-none"></div>
+
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+              <!-- Pílula EM ATENDIMENTO AGORA com Ponto Verde Perfeitamente Alinhado -->
+              <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 leading-none">
+                <span class="live-dot-wrapper">
+                  <span class="live-dot-ping"></span>
+                  <span class="live-dot-core"></span>
+                </span>
+                <span>EM ATENDIMENTO AGORA</span>
+              </span>
+
+              <span id="now-shift-badge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-white/15 text-brand-100 leading-none">
+                Turno Atual
+              </span>
+            </div>
+
+            <h2 id="now-shift-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              Equipe Plantonista em Serviço
+            </h2>
+            <p id="now-shift-subtitle" class="text-brand-100 text-xs sm:text-sm mt-1 font-medium">
+              Santa Casa de Ponta Grossa • Maternidade (Trocas às 07:00 e 19:00)
+            </p>
+          </div>
+
+          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-3.5 border border-white/15 flex items-center gap-3.5 self-start md:self-auto">
+            <div class="w-11 h-11 rounded-2xl bg-scred-600 flex items-center justify-center text-white shadow-md shrink-0">
+              <i data-lucide="hourglass" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <p class="text-[11px] text-brand-100 font-semibold uppercase tracking-wider">Próxima Passagem</p>
+              <p id="now-next-handover" class="text-base sm:text-lg font-extrabold text-white">19:00 ou 07:00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROTINEIRO DA MANHÃ (Exibido APENAS entre 07h e 13h) -->
+      <div id="now-routine-container"></div>
+
+      <!-- MÉDICOS DO PLANTÃO ATUAL -->
+      <div>
+        <div class="flex items-center justify-between mb-3 px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
+              <i data-lucide="stethoscope" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-base sm:text-lg font-extrabold text-brand-950">Plantonistas Escalados</h3>
+          </div>
+          <span class="text-xs font-semibold text-slate-500">Toque no médico para detalhes</span>
+        </div>
+
+        <div id="now-doctors-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+
+    </section>
+
+    <!-- ================= 3. ABA: CORPO CLÍNICO ================= -->
+    <section id="view-doctors" class="view-section space-y-4 hidden">
+      <div class="m3-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="relative w-full sm:w-80">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-3"></i>
+          <input type="text" id="doctor-search" oninput="app.filterDoctors(this.value)" placeholder="Buscar profissional na escala..." 
+                 class="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-m3-containerLow border border-m3-outlineVariant/70 rounded-full focus:ring-2 focus:ring-brand-600 focus:outline-none">
+        </div>
+
+        <div id="editor-doc-tab-action" class="hidden flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+          <button onclick="app.openManageDoctorsModal()" 
+                  class="flex items-center gap-1.5 bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-full shadow-sm transition">
+            <i data-lucide="users" class="w-4 h-4"></i>
+            <span>Gerenciar profissionais</span>
+          </button>
+          <button onclick="app.openDoctorModal()" 
+                  class="flex items-center gap-1.5 bg-scred-600 hover:bg-scred-700 text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-full shadow-sm transition">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>Novo Profissional</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="doctors-catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+    </section>
+
+    <!-- ================= 4. ABA: ESTATÍSTICAS E FECHAMENTO ================= -->
+    <section id="view-stats" class="view-section space-y-4 hidden">
+      <div class="m3-card p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-extrabold text-brand-950">Fechamento Mensal de Escala</h2>
+          <p class="text-xs text-slate-500">Contabilização de horas de plantão e rotineiro</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input type="month" id="stats-month-picker" onchange="app.loadStats(this.value)" 
+                 class="text-xs sm:text-sm bg-m3-containerLow border border-m3-outlineVariant rounded-full px-3.5 py-1.5 font-bold text-brand-950">
+          <button onclick="app.exportStatsCSV()" class="flex items-center gap-1.5 text-xs bg-brand-100 hover:bg-brand-200 text-brand-950 px-4 py-2 rounded-full font-bold transition">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>Exportar CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="m3-card overflow-hidden">
+        <div id="stats-scroll-viewport" class="stats-scroll-container" onscroll="app.handleStatsScroll(this)">
+          <table class="stats-scroll-table text-left text-xs sm:text-sm select-none">
+            <thead class="bg-[#E8ECF7] text-brand-950 font-bold uppercase tracking-wider text-[10px] sm:text-[11px] leading-tight">
+              <tr>
+                <th class="sticky-stats-col bg-[#E8ECF7] px-3 sm:px-4 py-2.5 border-r border-b border-m3-outlineVariant/70">Profissional</th>
+                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Turnos Diurnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
+                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Plantões Noturnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(12h)</span></th>
+                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Rotineiro<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
+                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Reforços<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(4h)</span></th>
+                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-m3-outlineVariant/40 text-center font-extrabold">TOTAL (H)</th>
+              </tr>
+            </thead>
+            <tbody id="stats-table-body" class="text-slate-700"></tbody>
+          </table>
+        </div>
+
+        <!-- Barra de Progresso de Rolagem Horizontal (Fechamento Mensal) -->
+        <div class="px-3.5 py-2 bg-m3-containerLow/90 border-t border-m3-outlineVariant/50 flex items-center gap-3">
+          <div class="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 uppercase tracking-wider shrink-0">
+            <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
+            <span>Deslize</span>
+          </div>
+          <div id="stats-scroll-track" onclick="app.handleTrackClick(event, 'stats-scroll-viewport')"
+               class="relative flex-1 h-2 bg-brand-100 rounded-full overflow-hidden cursor-pointer">
+            <div id="stats-scroll-bar" class="h-full bg-gradient-to-r from-brand-600 to-brand-800 rounded-full transition-[width] duration-75" style="width: 30%;"></div>
+          </div>
+          <span id="stats-scroll-pct" class="text-[10px] font-extrabold text-brand-950 font-mono w-8 text-right shrink-0">30%</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= BARRA DE NAVEGAÇÃO INFERIOR MATERIAL 3 EXPRESSIVE (EXCLUSIVA MOBILE) ================= -->
+  <nav id="bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 bg-m3-containerLow/95 backdrop-blur-lg border-t border-m3-outlineVariant/60 px-2 pt-2 z-40 flex items-center justify-around shadow-[0_-4px_20px_rgba(35,41,139,0.08)]">
+    <button onclick="app.switchView('spreadsheet')" id="bnav-spreadsheet" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
+      <div class="bnav-pill m3-pill-indicator w-16 h-8 rounded-full flex items-center justify-center bg-brand-100 text-brand-950">
+        <i data-lucide="calendar" class="w-5 h-5"></i>
+      </div>
+      <span class="text-[11px] font-extrabold text-brand-950 leading-none">Escala</span>
+    </button>
+
+    <button onclick="app.switchView('now')" id="bnav-now" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
+      <div class="bnav-pill m3-pill-indicator w-16 h-8 rounded-full flex items-center justify-center text-slate-600 relative">
+        <i data-lucide="activity" class="w-5 h-5"></i>
+        <span class="absolute top-1 right-4 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-m3-containerLow"></span>
+      </div>
+      <span class="text-[11px] font-semibold text-slate-600 leading-none">Agora</span>
+    </button>
+
+    <button onclick="app.switchView('doctors')" id="bnav-doctors" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
+      <div class="bnav-pill m3-pill-indicator w-16 h-8 rounded-full flex items-center justify-center text-slate-600">
+        <i data-lucide="users" class="w-5 h-5"></i>
+      </div>
+      <span class="text-[11px] font-semibold text-slate-600 leading-none">Médicos</span>
+    </button>
+
+    <button onclick="app.switchView('stats')" id="bnav-stats" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
+      <div class="bnav-pill m3-pill-indicator w-16 h-8 rounded-full flex items-center justify-center text-slate-600">
+        <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+      </div>
+      <span class="text-[11px] font-semibold text-slate-600 leading-none">Fechamento</span>
+    </button>
+  </nav>
+
+  <!-- ================= MODAL: FICHA DO MÉDICO (M3 EXPRESSIVE SHEET) ================= -->
+  <div id="modal-doctor-profile" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-md w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active">
+      <div class="relative bg-gradient-to-br from-brand-700 via-brand-800 to-brand-950 text-white p-6 text-center">
+        <button onclick="app.closeDoctorProfileModal()" class="absolute top-4 right-4 text-white/80 hover:text-white w-9 h-9 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+        <div class="relative inline-block mx-auto mb-3">
+          <div id="profile-modal-avatar-container" class="w-24 h-24 rounded-3xl overflow-hidden border-4 border-white shadow-xl bg-slate-200 mx-auto flex items-center justify-center"></div>
+        </div>
+        <h3 id="profile-modal-name" class="text-xl font-extrabold leading-snug">Nome do Profissional</h3>
+        <p id="profile-modal-crm" class="text-brand-100 text-xs font-semibold mt-0.5"></p>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div id="profile-modal-shift-info" class="bg-brand-50 border border-brand-200 rounded-2xl p-3.5 flex items-start gap-3">
+          <i data-lucide="clock" class="w-5 h-5 text-brand-700 shrink-0 mt-0.5"></i>
+          <div>
+            <h4 class="text-xs font-extrabold text-brand-950">Plantão Selecionado</h4>
+            <p id="profile-modal-shift-text" class="text-xs text-brand-800 font-semibold mt-0.5"></p>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Telefone & WhatsApp</label>
+          <div class="bg-m3-containerLow border border-m3-outlineVariant/60 rounded-2xl p-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <i data-lucide="phone" class="w-4 h-4 text-brand-700"></i>
+              <span id="profile-modal-phone" class="text-sm font-extrabold text-brand-950 font-mono">Não cadastrado</span>
+            </div>
+            <span id="profile-modal-phone-status" class="text-[11px] font-bold text-slate-500 bg-m3-container px-2.5 py-0.5 rounded-full">Pendente</span>
+          </div>
+        </div>
+
+        <div id="profile-modal-actions" class="grid grid-cols-2 gap-3 pt-2">
+          <a id="profile-modal-btn-call" href="#" 
+             class="flex items-center justify-center gap-2 bg-brand-700 hover:bg-brand-800 text-white font-bold py-3 px-4 rounded-full text-xs sm:text-sm shadow-md transition">
+            <i data-lucide="phone-call" class="w-4 h-4"></i>
+            <span>Ligar Agora</span>
+          </a>
+          <a id="profile-modal-btn-whatsapp" href="#" target="_blank"
+             class="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-full text-xs sm:text-sm shadow-md transition">
+            <i data-lucide="message-circle" class="w-4 h-4"></i>
+            <span>WhatsApp</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: GERENCIAR PROFISSIONAIS (MODO EDITOR) ================= -->
+  <div id="modal-manage-doctors" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active max-h-[85vh] flex flex-col">
+      <div class="p-5 border-b border-m3-outlineVariant/40 flex items-center justify-between bg-m3-containerLow">
+        <div>
+          <h3 class="font-extrabold text-brand-950 text-base">Gerenciar Profissionais</h3>
+          <p class="text-xs text-slate-500">Cadastre telefones, fotos e edite o corpo clínico da escala</p>
+        </div>
+        <button onclick="app.closeManageDoctorsModal()" class="text-slate-400 hover:text-slate-700 w-9 h-9 flex items-center justify-center rounded-full hover:bg-m3-container">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 border-b border-m3-outlineVariant/40 flex items-center justify-between gap-3 bg-white">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5"></i>
+          <input type="text" id="manage-search-input" oninput="app.filterManageList(this.value)" placeholder="Filtrar profissional..."
+                 class="w-full pl-9 pr-3 py-2 text-xs bg-m3-containerLow border border-m3-outlineVariant rounded-full focus:outline-none focus:ring-2 focus:ring-brand-600">
+        </div>
+        <button onclick="app.openDoctorModal()" class="flex items-center gap-1.5 text-xs bg-brand-700 hover:bg-brand-800 text-white font-bold px-4 py-2 rounded-full transition shadow-sm shrink-0">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Novo Profissional</span>
+        </button>
+      </div>
+
+      <div class="p-4 overflow-y-auto flex-1 divide-y divide-slate-100" id="manage-doctors-list"></div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CADASTRO / EDIÇÃO DE PROFISSIONAL ================= -->
+  <div id="modal-doctor-form" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active">
+      <div class="p-5 border-b border-m3-outlineVariant/40 flex items-center justify-between bg-m3-containerLow">
+        <div>
+          <h3 class="font-extrabold text-brand-950 text-base" id="doctor-form-title">Editar Profissional</h3>
+          <p class="text-xs text-slate-500">Adicione o telefone e a foto para exibição na consulta</p>
+        </div>
+        <button onclick="app.closeDoctorModal()" class="text-slate-400 hover:text-slate-700 w-9 h-9 flex items-center justify-center rounded-full hover:bg-m3-container">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="form-doctor" onsubmit="app.handleSaveDoctor(event)" class="p-6 space-y-4">
+        <input type="hidden" id="doc-id">
+
+        <div class="flex items-center gap-4">
+          <div id="doc-photo-preview-container" class="w-20 h-20 rounded-2xl overflow-hidden bg-slate-200 border-2 border-m3-outlineVariant shrink-0 flex items-center justify-center"></div>
+          <div class="flex-1 space-y-2">
+            <label class="block text-xs font-bold text-slate-700">Foto do Profissional (Opcional)</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="cursor-pointer bg-brand-100 hover:bg-brand-200 text-brand-950 text-xs font-bold px-3.5 py-1.5 rounded-full transition inline-flex items-center gap-1.5">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                <span>Enviar Foto</span>
+                <input type="file" id="doc-photo-file" accept="image/*" class="hidden" onchange="app.handlePhotoUpload(event)">
+              </label>
+              <button type="button" onclick="app.clearDoctorPhoto()" class="text-xs text-scred-600 hover:underline px-2 py-1 font-semibold">
+                Usar Silhueta Padrão
+              </button>
+            </div>
+            <input type="text" id="doc-photo-url" placeholder="Ou cole URL da imagem..." oninput="app.updatePhotoPreview(this.value)"
+                   class="w-full text-xs bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-1.5">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nome na Planilha *</label>
+            <input type="text" id="doc-name" required placeholder="Ex: Henrique H"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-sm font-semibold focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Especialidade *</label>
+            <select id="doc-specialty" required
+                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-sm font-bold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+              <option value="GO">GO</option>
+              <option value="Pediatra">Pediatra</option>
+              <option value="Anestesista">Anestesista</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">CRM</label>
+            <input type="text" id="doc-crm" placeholder="Ex: 12345-PR (Opcional)"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-sm font-mono focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">Telefone / WhatsApp</label>
+            <input type="tel" id="doc-phone" placeholder="Deixe vazio se não cadastrado"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-sm font-mono focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100">
+          <button type="button" id="btn-delete-doctor" onclick="app.handleDeleteDoctor()" 
+                  class="hidden text-xs text-scred-600 hover:text-scred-800 font-bold px-3 py-2 rounded-full hover:bg-scred-50 transition">
+            Excluir Profissional
+          </button>
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" onclick="app.closeDoctorModal()" 
+                    class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+              Cancelar
+            </button>
+            <button type="submit" 
+                    class="px-5 py-2.5 text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition">
+              Salvar Profissional
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: ESCALAR PLANTONISTA (MODO EDITOR) ================= -->
+  <div id="modal-assign-shift" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-md w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active">
+      <div class="p-5 border-b border-m3-outlineVariant/40 flex items-center justify-between bg-m3-containerLow">
+        <div>
+          <span id="shift-modal-badge" class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-950">Turno</span>
+          <h3 class="font-extrabold text-brand-950 text-base mt-1" id="shift-modal-title">Escalar Plantonista</h3>
+        </div>
+        <button onclick="app.closeShiftModal()" class="text-slate-400 hover:text-slate-700 w-9 h-9 flex items-center justify-center rounded-full hover:bg-m3-container">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="app.handleSaveShiftAssignment(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">Selecione o Profissional</label>
+          <select id="shift-select-doctor" required
+                  class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-2xl px-3.5 py-2.5 text-sm font-bold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </select>
+        </div>
+
+        <div id="consecutive-options-box" class="bg-brand-50/70 rounded-2xl p-3.5 border border-brand-200 space-y-2">
+          <div class="flex items-center gap-1.5 text-xs font-extrabold text-brand-950">
+            <i data-lucide="calendar-clock" class="w-4 h-4 text-brand-700"></i>
+            <span>Duração & Turnos Consecutivos</span>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-brand-200 cursor-pointer text-xs font-medium text-slate-800 hover:bg-brand-50">
+              <input type="radio" name="shift_duration" value="single" checked class="text-brand-700 focus:ring-brand-600">
+              <span><strong>Apenas esta vaga</strong></span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-brand-200 cursor-pointer text-xs font-medium text-slate-800 hover:bg-brand-50">
+              <input type="radio" name="shift_duration" value="day_full" class="text-brand-700 focus:ring-brand-600">
+              <span><strong>Diurno 12h</strong> (07-19h)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-brand-200 cursor-pointer text-xs font-medium text-slate-800 hover:bg-brand-50">
+              <input type="radio" name="shift_duration" value="24h_sameday" class="text-brand-700 focus:ring-brand-600">
+              <span><strong>24h</strong> (Dia + Noite)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-xl bg-white border border-brand-200 cursor-pointer text-xs font-medium text-slate-800 hover:bg-brand-50">
+              <input type="radio" name="shift_duration" value="24h_nextday" class="text-brand-700 focus:ring-brand-600">
+              <span><strong>24h</strong> (Noite + Dia seg.)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <button type="button" onclick="app.removeCurrentShift()" 
+                  class="text-xs text-scred-600 hover:text-scred-800 font-bold px-3 py-2 rounded-full hover:bg-scred-50 flex items-center gap-1 transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Limpar vaga</span>
+          </button>
+
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="app.closeShiftModal()" 
+                    class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+              Cancelar
+            </button>
+            <button type="submit" 
+                    class="px-5 py-2.5 text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition">
+              Salvar Escala
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: AUTENTICAÇÃO DE PIN ================= -->
+  <div id="modal-pin-auth" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-sm w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="shield-check" class="w-7 h-7"></i>
+      </div>
+      <h3 class="text-lg font-extrabold text-brand-950">Modo Editor</h3>
+      <p class="text-xs text-slate-500 mt-1 mb-4">Digite a senha de 6 dígitos numéricos para desbloquear a edição</p>
+
+      <form onsubmit="app.handlePinSubmit(event)">
+        <div class="mb-4">
+          <input type="password" id="pin-input" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" minlength="6" autofocus placeholder="••••••" 
+                 class="w-48 text-center text-2xl tracking-[0.35em] font-mono py-2.5 px-3 bg-m3-containerLow border-2 border-m3-outlineVariant rounded-2xl focus:border-brand-700 focus:outline-none">
+          <p id="pin-error-msg" class="text-xs text-scred-600 mt-2 hidden font-bold"></p>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-5">Senha padrão (6 dígitos): <strong class="text-brand-950">123456</strong></p>
+
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="app.closePinModal()" 
+                  class="flex-1 py-2.5 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+            Cancelar
+          </button>
+          <button type="submit" 
+                  class="flex-1 py-2.5 text-xs font-bold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition">
+            Desbloquear
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CONFIGURAÇÕES E NUVEM FIREBASE ================= -->
+  <div id="modal-settings" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div class="flex items-center gap-2">
+          <i data-lucide="sliders" class="w-5 h-5 text-brand-700"></i>
+          <h3 class="font-extrabold text-brand-950 text-base">Configurações & Nuvem</h3>
+        </div>
+        <button onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div class="bg-brand-50 p-4 rounded-2xl border border-brand-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-brand-700"></span>
+              <h4 class="font-extrabold text-brand-950 text-sm">Conexão Firebase (Cloud Firestore)</h4>
+            </div>
+            <span id="settings-firebase-badge" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-950">
+              Conectado
+            </span>
+          </div>
+          <p class="text-xs text-brand-900 leading-relaxed">
+            Sincronização em tempo real na nuvem entre todos os celulares e computadores da equipe.
+          </p>
+
+          <div>
+            <label class="block text-xs font-bold text-brand-950 mb-1">Objeto firebaseConfig:</label>
+            <textarea id="settings-firebase-input" rows="4" placeholder='{"apiKey": "...", "projectId": "..."}'
+                      class="w-full bg-white border border-brand-200 rounded-xl p-2.5 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-brand-600"></textarea>
+          </div>
+
+          <div class="flex items-center justify-between pt-1">
+            <a href="https://console.firebase.google.com" target="_blank" class="text-xs text-brand-700 font-bold hover:underline flex items-center gap-1">
+              <span>Firebase Console</span>
+              <i data-lucide="external-link" class="w-3 h-3"></i>
+            </a>
+            <button onclick="app.saveFirebaseConfig()" class="bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold px-4 py-2 rounded-full shadow transition">
+              Salvar e Conectar
+            </button>
+          </div>
+        </div>
+
+        <!-- Alterar PIN -->
+        <div class="bg-m3-containerLow p-4 rounded-2xl border border-m3-outlineVariant/60 space-y-2.5">
+          <label class="block text-xs font-extrabold text-brand-950">Alterar Senha do Modo Editor (6 dígitos numéricos)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <input type="password" id="settings-current-pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" minlength="6" placeholder="Senha Atual (6 díg.)" class="bg-white border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs">
+            <input type="password" id="settings-new-pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" minlength="6" placeholder="Nova Senha (6 díg.)" class="bg-white border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs">
+          </div>
+          <button onclick="app.handleChangePin()" class="text-xs bg-brand-100 hover:bg-brand-200 text-brand-950 font-bold px-4 py-2 rounded-full transition">
+            Atualizar Senha
+          </button>
+        </div>
+
+        <!-- Recarregar dados -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <span class="text-xs text-slate-500">Restaurar escala padrão da planilha</span>
+          <button onclick="app.reloadSeedData()" class="text-xs text-scred-600 hover:underline font-bold">
+            Recarregar Planilha
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Scripts -->
+  <script src="/initial-data.js?v=11"></script>
+  <script src="/app.js?v=11"></script>
+  <script>
+    const CURRENT_APP_VERSION = "v11-202610292334";
+
+    async function checkAndApplyWebAppUpdate() {
+      try {
+        const res = await fetch("/version.json?_t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.version && data.version !== CURRENT_APP_VERSION) {
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+          window.location.reload();
+        }
+      } catch (e) {
+        // Offline ou sem rede no momento
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.lucide) lucide.createIcons();
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js?v=10", { updateViaCache: "none" }).then((reg) => {
+          reg.update();
+        }).catch(() => {});
+      }
+
+      checkAndApplyWebAppUpdate();
+    });
+
+    // Sempre que o app da Tela Inicial voltar do segundo plano para a tela, verifica se há nova versão
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkAndApplyWebAppUpdate();
+      }
+    });
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) {
+        checkAndApplyWebAppUpdate();
+      }
+    });
+    window.addEventListener("focus", () => {
+      checkAndApplyWebAppUpdate();
+    });
+  </script>
+</body>
+</html>
