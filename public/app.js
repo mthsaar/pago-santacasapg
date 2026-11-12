@@ -31,7 +31,9 @@ const app = {
     doctorFilter: '',
     manageFilter: '',
     firebaseActive: false,
-    firestoreDb: null
+    firestoreDb: null,
+    undoStack: [],
+    redoStack: []
   },
 
   async init() {
@@ -55,6 +57,20 @@ const app = {
 
     window.addEventListener('resize', () => {
       this.updateTableColumnMetrics();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (!this.state.isEditorMode || this.state.currentView !== 'spreadsheet') return;
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        this.undoShiftAction();
+      } else if ((e.metaKey || e.ctrlKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
+        e.preventDefault();
+        this.redoShiftAction();
+      }
     });
 
     setInterval(() => {
@@ -449,6 +465,7 @@ const app = {
     const mobBtnSettings = document.getElementById('mobile-btn-settings');
 
     const editorDocTabAction = document.getElementById('editor-doc-tab-action');
+    const editorUndoRedoBar = document.getElementById('editor-undo-redo-bar');
 
     if (this.state.isEditorMode) {
       if (optConsulta) {
@@ -472,6 +489,7 @@ const app = {
       if (btnSettings) btnSettings.classList.remove('hidden');
       if (mobBtnSettings) mobBtnSettings.classList.remove('hidden');
       if (editorDocTabAction) editorDocTabAction.classList.remove('hidden');
+      if (editorUndoRedoBar) editorUndoRedoBar.classList.remove('hidden');
     } else {
       if (optConsulta) {
         optConsulta.className = "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-white text-brand-950 shadow-sm transition-all";
@@ -494,9 +512,32 @@ const app = {
       if (btnSettings) btnSettings.classList.add('hidden');
       if (mobBtnSettings) mobBtnSettings.classList.add('hidden');
       if (editorDocTabAction) editorDocTabAction.classList.add('hidden');
+      if (editorUndoRedoBar) editorUndoRedoBar.classList.add('hidden');
     }
 
+    this.updateUndoRedoUI();
     if (window.lucide) lucide.createIcons();
+  },
+
+  updateUndoRedoUI() {
+    const btnUndo = document.getElementById('btn-undo-shift');
+    const btnRedo = document.getElementById('btn-redo-shift');
+    const statusText = document.getElementById('undo-redo-status-text');
+
+    if (btnUndo) {
+      btnUndo.disabled = (this.state.undoStack.length === 0);
+    }
+    if (btnRedo) {
+      btnRedo.disabled = (this.state.redoStack.length === 0);
+    }
+    if (statusText) {
+      if (this.state.undoStack.length > 0) {
+        const last = this.state.undoStack[this.state.undoStack.length - 1];
+        statusText.textContent = `Última ação: ${last.label}`;
+      } else {
+        statusText.textContent = '';
+      }
+    }
   },
 
   // ================= NAVEGAÇÃO ENTRE ABAS (M3 EXPRESSIVE) =================
@@ -2024,22 +2065,19 @@ const app = {
         batch.push({ date: nextDateStr, shift_type: 'afternoon', slot_role: 'day_1', doctor_id: doctorId, doctor_name: doctorName });
       }
 
-      if (this.state.firebaseActive && this.state.firestoreDb) {
-        const firestoreBatch = this.state.firestoreDb.batch();
-        for (const item of batch) {
-          const docKey = `${item.date}_${item.shift_type}_${item.slot_role}`;
-          const ref = this.state.firestoreDb.collection('shifts').doc(docKey);
-          firestoreBatch.set(ref, item);
-        }
-        await firestoreBatch.commit();
-      } else {
-        await fetch('/api/shifts/batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shifts: batch })
-        });
-        await this.loadAllData();
-      }
+      // Captura estado anterior para Desfazer (Undo)
+      const beforeSnapshots = batch.map(item => this.getShiftSnapshot(item.date, item.shift_type, item.slot_role));
+      const afterSnapshots = batch.map(item => ({ ...item }));
+
+      await this.applyShiftSnapshots(afterSnapshots);
+
+      this.state.undoStack.push({
+        label: `Escalar ${doctorName}`,
+        before: beforeSnapshots,
+        after: afterSnapshots
+      });
+      this.state.redoStack = [];
+      this.updateUndoRedoUI();
 
       this.closeShiftModal();
       this.renderSpreadsheetView();
@@ -2055,22 +2093,24 @@ const app = {
     if (!slot) return;
 
     try {
-      if (this.state.firebaseActive && this.state.firestoreDb) {
-        const docKey = `${slot.date}_${slot.shiftType}_${slot.slotRole}`;
-        await this.state.firestoreDb.collection('shifts').doc(docKey).delete();
-      } else {
-        await fetch('/api/shifts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            date: slot.date,
-            shift_type: slot.shiftType,
-            slot_role: slot.slotRole,
-            doctor_id: null
-          })
-        });
-        await this.loadAllData();
-      }
+      const beforeSnap = this.getShiftSnapshot(slot.date, slot.shiftType, slot.slotRole);
+      const afterSnap = {
+        date: slot.date,
+        shift_type: slot.shiftType,
+        slot_role: slot.slotRole,
+        doctor_id: null,
+        doctor_name: ''
+      };
+
+      await this.applyShiftSnapshots([afterSnap]);
+
+      this.state.undoStack.push({
+        label: `Remover ${beforeSnap.doctor_name || 'plantonista'}`,
+        before: [beforeSnap],
+        after: [afterSnap]
+      });
+      this.state.redoStack = [];
+      this.updateUndoRedoUI();
 
       this.closeShiftModal();
       this.renderSpreadsheetView();
@@ -2079,6 +2119,371 @@ const app = {
     } catch (e) {
       this.showToast('Erro ao remover', 'error');
     }
+  },
+
+  // ================= DESFAZER / AVANÇAR (UNDO / REDO) =================
+  getShiftSnapshot(date, shift_type, slot_role) {
+    const existing = this.state.shifts.find(
+      s => s.date === date && s.shift_type === shift_type && s.slot_role === slot_role
+    );
+    if (existing && existing.doctor_id) {
+      return {
+        date,
+        shift_type,
+        slot_role,
+        doctor_id: existing.doctor_id,
+        doctor_name: existing.doctor_name || this.getDoctorNameById(existing.doctor_id) || ''
+      };
+    }
+    return {
+      date,
+      shift_type,
+      slot_role,
+      doctor_id: null,
+      doctor_name: ''
+    };
+  },
+
+  async applyShiftSnapshots(snapshots) {
+    if (!snapshots || snapshots.length === 0) return;
+
+    // Atualiza o estado local imediatamente para resposta instantânea na tabela
+    for (const item of snapshots) {
+      this.state.shifts = this.state.shifts.filter(
+        s => !(s.date === item.date && s.shift_type === item.shift_type && s.slot_role === item.slot_role)
+      );
+      if (item.doctor_id) {
+        this.state.shifts.push({
+          date: item.date,
+          shift_type: item.shift_type,
+          slot_role: item.slot_role,
+          doctor_id: item.doctor_id,
+          doctor_name: item.doctor_name || this.getDoctorNameById(item.doctor_id) || ''
+        });
+      }
+    }
+
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      const firestoreBatch = this.state.firestoreDb.batch();
+      for (const item of snapshots) {
+        const docKey = `${item.date}_${item.shift_type}_${item.slot_role}`;
+        const ref = this.state.firestoreDb.collection('shifts').doc(docKey);
+        if (item.doctor_id) {
+          firestoreBatch.set(ref, {
+            date: item.date,
+            shift_type: item.shift_type,
+            slot_role: item.slot_role,
+            doctor_id: item.doctor_id,
+            doctor_name: item.doctor_name || this.getDoctorNameById(item.doctor_id) || ''
+          });
+        } else {
+          firestoreBatch.delete(ref);
+        }
+      }
+      await firestoreBatch.commit();
+    } else {
+      for (const item of snapshots) {
+        await fetch('/api/shifts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: item.date,
+            shift_type: item.shift_type,
+            slot_role: item.slot_role,
+            doctor_id: item.doctor_id || null
+          })
+        });
+      }
+      await this.loadAllData();
+    }
+  },
+
+  async undoShiftAction() {
+    if (!this.state.isEditorMode) return;
+    if (!this.state.undoStack || this.state.undoStack.length === 0) return;
+
+    const action = this.state.undoStack.pop();
+    try {
+      await this.applyShiftSnapshots(action.before);
+      this.state.redoStack.push(action);
+      this.updateUndoRedoUI();
+      this.renderSpreadsheetView();
+      this.renderDailyView();
+      this.showToast(`Desfeito: ${action.label}`, 'info');
+    } catch (err) {
+      this.state.undoStack.push(action);
+      this.updateUndoRedoUI();
+      this.showToast('Erro ao desfazer: ' + err.message, 'error');
+    }
+  },
+
+  async redoShiftAction() {
+    if (!this.state.isEditorMode) return;
+    if (!this.state.redoStack || this.state.redoStack.length === 0) return;
+
+    const action = this.state.redoStack.pop();
+    try {
+      await this.applyShiftSnapshots(action.after);
+      this.state.undoStack.push(action);
+      this.updateUndoRedoUI();
+      this.renderSpreadsheetView();
+      this.renderDailyView();
+      this.showToast(`Refeito: ${action.label}`, 'info');
+    } catch (err) {
+      this.state.redoStack.push(action);
+      this.updateUndoRedoUI();
+      this.showToast('Erro ao avançar: ' + err.message, 'error');
+    }
+  },
+
+  // ================= EXPORTAÇÃO MENSAL COMPLETA (PDF / XLSX) =================
+  getSlotDoctorName(dateStr, shiftType, slotRole) {
+    const s = this.state.shifts.find(
+      item => item.date === dateStr && item.shift_type === shiftType && item.slot_role === slotRole
+    );
+    if (!s || !s.doctor_id) return '';
+    return s.doctor_name || this.getDoctorNameById(s.doctor_id) || '';
+  },
+
+  exportFullMonthXLSX() {
+    if (typeof XLSX === 'undefined') {
+      this.showToast('Biblioteca Excel ainda carregando. Tente novamente em instantes.', 'warning');
+      return;
+    }
+
+    const [year, month] = this.state.currentMonth.split('-').map(Number);
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const monthName = monthNames[month - 1];
+    const weeks = this.getWeeksOfMonth(year, month);
+    const weekdayNames = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+    const rows = [
+      ['SANTA CASA DE PONTA GROSSA — ESCALA DE PLANTÃO OBSTETRÍCIA (PAGO)'],
+      [`MÊS DE REFERÊNCIA: ${monthName.toUpperCase()} DE ${year}`],
+      []
+    ];
+
+    weeks.forEach((weekDays, wIdx) => {
+      rows.push([
+        `SEMANA ${wIdx + 1} (${ String(weekDays[0].day).padStart(2, '0') }/${ String(Number(weekDays[0].dateStr.slice(5, 7))).padStart(2, '0') } a ${ String(weekDays[6].day).padStart(2, '0') }/${ String(Number(weekDays[6].dateStr.slice(5, 7))).padStart(2, '0') })`
+      ]);
+
+      const headerRow = [
+        'Horário / Turno',
+        ...weekDays.map((d, idx) => {
+          const mNum = d.dateStr.slice(5, 7);
+          const suffix = d.isCurrentMonth ? '' : ' (Outro mês)';
+          return `${weekdayNames[idx]} (${String(d.day).padStart(2, '0')}/${mNum})${suffix}`;
+        })
+      ];
+      rows.push(headerRow);
+
+      const slotDefinitions = [
+        { label: '07-13h (Rotineiro)', type: 'routine', role: 'rotineiro' },
+        { label: '07-13h (Plantonista 1)', type: 'morning', role: 'day_1' },
+        { label: '07-13h (Plantonista 2)', type: 'morning', role: 'day_2' },
+        { label: '13-19h (Plantonista 1)', type: 'afternoon', role: 'day_1' },
+        { label: '13-19h (Plantonista 2)', type: 'afternoon', role: 'day_2' },
+        { label: '19-23h (Reforço)', type: 'evening', role: 'shift_19_23' },
+        { label: '19-07h (Noturno 1)', type: 'night', role: 'night_1' },
+        { label: '19-07h (Noturno 2)', type: 'night', role: 'night_2' }
+      ];
+
+      slotDefinitions.forEach(def => {
+        const line = [def.label];
+        weekDays.forEach(d => {
+          const docName = this.getSlotDoctorName(d.dateStr, def.type, def.role);
+          line.push(docName || '—');
+        });
+        rows.push(line);
+      });
+
+      rows.push([]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const wsEscala = XLSX.utils.aoa_to_sheet(rows);
+    wsEscala['!cols'] = [
+      { wch: 24 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 20 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsEscala, `Escala ${monthName}`);
+
+    // Aba 2: Resumo do Fechamento Mensal
+    const monthShifts = this.state.shifts.filter(s => s.date && s.date.startsWith(this.state.currentMonth));
+    const statsRows = [
+      [`FECHAMENTO MENSAL — ${monthName.toUpperCase()} / ${year}`],
+      [],
+      ['Profissional', 'Especialidade', 'CRM', 'Manhã/Tarde (6h)', 'Reforço 19-23h (4h)', 'Noturno 19-07h (12h)', 'Rotineiro (6h)', 'Total Plantões', 'TOTAL (H)']
+    ];
+
+    this.state.doctors.forEach(doc => {
+      const myShifts = monthShifts.filter(s => String(s.doctor_id) === String(doc.id));
+      const cDay = myShifts.filter(s => s.shift_type === 'morning' || s.shift_type === 'afternoon').length;
+      const cEve = myShifts.filter(s => s.shift_type === 'evening').length;
+      const cNight = myShifts.filter(s => s.shift_type === 'night').length;
+      const cRoutine = myShifts.filter(s => s.shift_type === 'routine').length;
+      const totalShifts = myShifts.length;
+      const totalHours = (cDay * 6) + (cEve * 4) + (cNight * 12) + (cRoutine * 6);
+
+      if (totalShifts > 0) {
+        statsRows.push([
+          doc.name,
+          this.normalizeSpecialty(doc.specialty),
+          doc.crm || '—',
+          cDay,
+          cEve,
+          cNight,
+          cRoutine,
+          totalShifts,
+          totalHours
+        ]);
+      }
+    });
+
+    const wsStats = XLSX.utils.aoa_to_sheet(statsRows);
+    wsStats['!cols'] = [
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 14 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsStats, 'Fechamento Mensal');
+
+    const safeMonth = monthName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    XLSX.writeFile(wb, `Escala_SantaCasaPG_${safeMonth}_${year}.xlsx`);
+    this.showToast(`Planilha XLSX de ${monthName}/${year} baixada!`, 'success');
+  },
+
+  exportFullMonthPDF() {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      this.showToast('Biblioteca PDF ainda carregando. Tente novamente em instantes.', 'warning');
+      return;
+    }
+
+    const [year, month] = this.state.currentMonth.split('-').map(Number);
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const monthName = monthNames[month - 1];
+    const weeks = this.getWeeksOfMonth(year, month);
+    const weekdayNames = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+    // Cabeçalho institucional
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(12, 46, 89);
+    doc.text('SANTA CASA DE PONTA GROSSA — ESCALA MENSAL DE PLANTÃO (PAGO)', 14, 12);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Mês de Referência: ${monthName} de ${year}  •  Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, 14, 17);
+
+    let currentY = 21;
+
+    weeks.forEach((weekDays, wIdx) => {
+      const head = [[
+        `Horário (Sem. ${wIdx + 1})`,
+        ...weekDays.map((d, idx) => {
+          const mNum = d.dateStr.slice(5, 7);
+          return `${weekdayNames[idx]}\n${String(d.day).padStart(2, '0')}/${mNum}`;
+        })
+      ]];
+
+      const getDualCell = (dStr, type, r1, r2) => {
+        const n1 = this.getSlotDoctorName(dStr, type, r1) || '—';
+        const n2 = this.getSlotDoctorName(dStr, type, r2) || '—';
+        return `${n1}\n${n2}`;
+      };
+
+      const body = [
+        [
+          '07-13h\nRotineiro',
+          ...weekDays.map(d => this.getSlotDoctorName(d.dateStr, 'routine', 'rotineiro') || '—')
+        ],
+        [
+          '07-13h',
+          ...weekDays.map(d => getDualCell(d.dateStr, 'morning', 'day_1', 'day_2'))
+        ],
+        [
+          '13-19h',
+          ...weekDays.map(d => getDualCell(d.dateStr, 'afternoon', 'day_1', 'day_2'))
+        ],
+        [
+          '19-23h\nReforço',
+          ...weekDays.map(d => this.getSlotDoctorName(d.dateStr, 'evening', 'shift_19_23') || '—')
+        ],
+        [
+          '19-07h\nNoturno',
+          ...weekDays.map(d => getDualCell(d.dateStr, 'night', 'night_1', 'night_2'))
+        ]
+      ];
+
+      doc.autoTable({
+        startY: currentY,
+        head,
+        body,
+        theme: 'grid',
+        margin: { left: 10, right: 10 },
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 1.4,
+          valign: 'middle',
+          halign: 'center',
+          lineColor: [203, 213, 225],
+          lineWidth: 0.2,
+          textColor: [30, 41, 59]
+        },
+        headStyles: {
+          fillColor: [18, 70, 128],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7.8,
+          cellPadding: 1.6
+        },
+        columnStyles: {
+          0: { cellWidth: 25, fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [12, 46, 89] }
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body') {
+            if (data.row.index === 0) {
+              data.cell.styles.fillColor = [238, 246, 255];
+            } else if (data.row.index === 3) {
+              data.cell.styles.fillColor = [254, 242, 242];
+            } else if (data.row.index === 4) {
+              data.cell.styles.fillColor = [254, 252, 232];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        pageBreak: 'avoid'
+      });
+
+      currentY = doc.lastAutoTable.finalY + 4;
+    });
+
+    const safeMonth = monthName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    doc.save(`Escala_SantaCasaPG_${safeMonth}_${year}.pdf`);
+    this.showToast(`PDF da escala de ${monthName}/${year} baixado!`, 'success');
   },
 
   // ================= CONFIGURAÇÕES E FIREBASE =================

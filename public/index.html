@@ -86,6 +86,11 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
+  <!-- Exportação de Planilha Mensal (XLSX & PDF) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
   <!-- Firebase SDK v10 (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -309,6 +314,46 @@
               <span class="w-2 h-2 rounded-full bg-amber-500"></span>Noturno 19-07h
             </span>
           </div>
+        </div>
+      </div>
+
+      <!-- Barra acima da tabela da escala: Desfazer/Avançar (Modo Editor) + Baixar Planilha do Mês Todo (Todos os modos) -->
+      <div id="escala-toolbar-above-table" class="m3-card px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 bg-white">
+        <!-- Grupo Desfazer / Avançar (Exibido APENAS no Modo Editor) -->
+        <div id="editor-undo-redo-bar" class="hidden flex items-center gap-1.5">
+          <button type="button" id="btn-undo-shift" onclick="app.undoShiftAction()" disabled
+                  title="Desfazer última alteração na escala (Ctrl+Z)"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
+            <i data-lucide="undo-2" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Desfazer</span>
+          </button>
+          <button type="button" id="btn-redo-shift" onclick="app.redoShiftAction()" disabled
+                  title="Avançar / refazer alteração na escala (Ctrl+Y)"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
+            <i data-lucide="redo-2" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Avançar</span>
+          </button>
+          <span id="undo-redo-status-text" class="hidden sm:inline-block text-[11px] font-semibold text-slate-500 ml-1 truncate max-w-[200px]"></span>
+        </div>
+
+        <!-- Opção de Baixar a Planilha do Mês Todo em PDF ou XLSX (Visível em TODOS os modos) -->
+        <div class="flex items-center gap-1.5 ml-auto">
+          <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1 mr-0.5">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Baixar mês:</span>
+          </span>
+          <button type="button" onclick="app.exportFullMonthPDF()"
+                  title="Baixar planilha da escala do mês inteiro em formato PDF"
+                  class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-extrabold bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 transition shadow-2xs">
+            <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+            <span>PDF</span>
+          </button>
+          <button type="button" onclick="app.exportFullMonthXLSX()"
+                  title="Baixar planilha da escala do mês inteiro em formato Excel (.xlsx)"
+                  class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition shadow-2xs">
+            <i data-lucide="sheet" class="w-3.5 h-3.5"></i>
+            <span>XLSX</span>
+          </button>
         </div>
       </div>
 
@@ -848,10 +893,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=11"></script>
-  <script src="/app.js?v=11"></script>
+  <script src="/initial-data.js?v=12"></script>
+  <script src="/app.js?v=12"></script>
   <script>
-    const CURRENT_APP_VERSION = "v11-202610292334";
+    const CURRENT_APP_VERSION = "v12-202611121530";
 
     async function checkAndApplyWebAppUpdate() {
       try {
