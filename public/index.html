@@ -314,8 +314,15 @@
           </div>
         </div>
 
-        <!-- Ações à direita: Lembretes de Plantão (1h antes) + Botão único de Download (abre popup PDF / XLSX) -->
+        <!-- Ações à direita: Tela Cheia (Mobile) + Lembretes de Plantão (1h antes) + Botão único de Download -->
         <div class="flex items-center gap-1.5 ml-auto shrink-0">
+          <!-- Botão Ver Tabela em Tela Cheia (Mobile) -->
+          <button type="button" onclick="app.toggleTableFullscreen('escala-week-wrapper')"
+                  title="Ver tabela da escala em tela cheia"
+                  class="md:hidden flex items-center justify-center w-8 h-8 rounded-full bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-brand-800"></i>
+          </button>
+
           <button type="button" onclick="app.openShiftReminderModal()"
                   title="Aviso automático WhatsApp / SMS 1h antes do plantão"
                   class="relative flex items-center justify-center gap-1.5 w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
@@ -335,6 +342,19 @@
 
       <!-- PLANILHA SEMANAL ESCROLÁVEL -->
       <div id="escala-week-wrapper" class="m3-card overflow-hidden">
+        <!-- Barra Superior de Saída quando em Modo Tela Cheia -->
+        <div class="fullscreen-top-bar px-3.5 py-2.5 bg-brand-950 text-white items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-2">
+            <i data-lucide="calendar" class="w-4 h-4 text-scred-400"></i>
+            <span class="text-xs font-extrabold">Escala Semanal • Tela Cheia</span>
+          </div>
+          <button type="button" onclick="app.toggleTableFullscreen('escala-week-wrapper')"
+                  class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold transition">
+            <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i>
+            <span>Sair da tela cheia</span>
+          </button>
+        </div>
+
         <div id="calendar-table-container"></div>
 
         <!-- Barra de Progresso de Rolagem Horizontal (Escala Semanal - Sem porcentagem) -->
@@ -435,11 +455,37 @@
                   class="flex items-center justify-center w-8 h-8 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 transition shadow-2xs">
             <i data-lucide="search" class="w-3.5 h-3.5 text-scred-600"></i>
           </button>
+
+          <!-- Botão Ver Tabela de Pacientes em Tela Cheia (Mobile) -->
+          <button type="button" onclick="app.toggleTableFullscreen('maternity-table-card')"
+                  title="Ver tabela de pacientes em tela cheia"
+                  class="md:hidden flex items-center justify-center w-8 h-8 rounded-full bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-brand-800"></i>
+          </button>
         </div>
       </div>
 
       <!-- TABELA DE PACIENTES COM ESCROLAGEM VERTICAL E HORIZONTAL (MESMO ESTILO DA ESCALA) -->
-      <div class="m3-card overflow-hidden">
+      <div id="maternity-table-card" class="m3-card overflow-hidden">
+        <!-- Barra Superior de Saída quando em Modo Tela Cheia -->
+        <div class="fullscreen-top-bar px-3.5 py-2.5 bg-brand-950 text-white items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-2">
+            <i data-lucide="bed-double" class="w-4 h-4 text-scred-400"></i>
+            <span class="text-xs font-extrabold">Pacientes na Maternidade • Tela Cheia</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="app.openMaternityPatientSearchModal()"
+                    class="flex items-center justify-center w-7 h-7 rounded-full bg-scred-600 text-white">
+              <i data-lucide="search" class="w-3.5 h-3.5"></i>
+            </button>
+            <button type="button" onclick="app.toggleTableFullscreen('maternity-table-card')"
+                    class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold transition">
+              <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i>
+              <span>Sair</span>
+            </button>
+          </div>
+        </div>
+
         <div id="maternity-scroll-viewport" class="maternity-scroll-container custom-scrollbar" onscroll="app.handleMaternityScroll(this)">
           <table class="maternity-table text-left text-xs select-none">
             <thead class="bg-[#E8ECF7] text-brand-950 font-extrabold uppercase tracking-wider text-[10px] sm:text-[11px]">
@@ -565,7 +611,20 @@
       </div>
 
       <!-- SEÇÃO COLAPSÁVEL 1: FECHAMENTO DOS PROFISSIONAIS -->
-      <div class="m3-card overflow-hidden">
+      <div id="card-stats-professionals" class="m3-card overflow-hidden">
+        <!-- Barra Superior de Saída quando em Modo Tela Cheia -->
+        <div class="fullscreen-top-bar px-3.5 py-2.5 bg-brand-950 text-white items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-2">
+            <i data-lucide="users" class="w-4 h-4 text-scred-400"></i>
+            <span class="text-xs font-extrabold">Fechamento dos Profissionais • Tela Cheia</span>
+          </div>
+          <button type="button" onclick="app.toggleTableFullscreen('card-stats-professionals')"
+                  class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold transition">
+            <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i>
+            <span>Sair da tela cheia</span>
+          </button>
+        </div>
+
         <div onclick="app.toggleStatsSection('professionals')"
              class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
           <div class="flex items-center gap-3">
@@ -578,7 +637,12 @@
             </div>
           </div>
 
-          <div class="flex items-center gap-2 shrink-0">
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" onclick="event.stopPropagation(); app.toggleTableFullscreen('card-stats-professionals')"
+                    title="Ver tabela de fechamento em tela cheia"
+                    class="md:hidden flex items-center justify-center w-8 h-8 rounded-full bg-white border border-m3-outlineVariant/60 text-brand-950 transition">
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-brand-800"></i>
+            </button>
             <button type="button" onclick="event.stopPropagation(); app.exportStatsCSV()"
                     class="flex items-center gap-1.5 text-xs bg-brand-100 hover:bg-brand-200 text-brand-950 px-3 py-1.5 rounded-full font-extrabold transition">
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -1070,36 +1134,224 @@
           </select>
         </div>
 
-        <!-- Campos de Evolução (Sem indicadores de coluna) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">NOME</label>
+        <!-- Campos de Evolução (Estruturados e 100% compatíveis com Google Sheets) -->
+        <div class="space-y-3.5">
+          <!-- NOME -->
+          <div>
+            <label class="block text-xs font-extrabold text-brand-950 mb-1">NOME</label>
             <input type="text" id="evo-input-nome" placeholder="Nome completo da paciente"
                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">PARIDADE</label>
-            <input type="text" id="evo-input-paridade" placeholder="Ex: G2 P1 A0 • IG 39s"
-                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <!-- PARIDADE: G P C A E M (0 a 20 estilo alarme; 0 oculta a letra) -->
+          <div class="bg-m3-containerLow/80 border border-m3-outlineVariant/70 rounded-2xl p-3 space-y-2 relative">
+            <div class="flex items-center justify-between gap-2">
+              <label class="text-xs font-extrabold text-brand-950">PARIDADE (Toque para rolar de 0 a 20)</label>
+              <span id="evo-parity-preview-badge" class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-900">
+                —
+              </span>
+            </div>
+
+            <!-- Botões G, P, C, A, E, M com seta -->
+            <div class="grid grid-cols-6 gap-1.5" id="evo-parity-buttons-row">
+              <button type="button" onclick="app.openParityWheel('G')" id="btn-parity-G"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">G <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-G" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+              <button type="button" onclick="app.openParityWheel('P')" id="btn-parity-P"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">P <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-P" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+              <button type="button" onclick="app.openParityWheel('C')" id="btn-parity-C"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">C <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-C" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+              <button type="button" onclick="app.openParityWheel('A')" id="btn-parity-A"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">A <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-A" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+              <button type="button" onclick="app.openParityWheel('E')" id="btn-parity-E"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">E <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-E" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+              <button type="button" onclick="app.openParityWheel('M')" id="btn-parity-M"
+                      class="flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-600 transition">
+                <span class="text-[10px] font-bold text-slate-500 flex items-center gap-0.5">M <i data-lucide="chevron-down" class="w-3 h-3"></i></span>
+                <span id="val-parity-M" class="text-xs sm:text-sm font-extrabold text-slate-400">0</span>
+              </button>
+            </div>
+
+            <!-- Roda estilo alarme (0 a 20) que abre ao clicar em G, P, C, A, E ou M -->
+            <div id="evo-parity-wheel-popover" class="hidden bg-white border-2 border-brand-600 rounded-2xl p-2.5 shadow-xl">
+              <div class="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100">
+                <span id="evo-parity-wheel-title" class="text-xs font-extrabold text-brand-950">Selecionar valor (0 oculta a letra)</span>
+                <button type="button" onclick="app.closeParityWheel()" class="text-[11px] font-extrabold text-scred-600 px-2 py-0.5 rounded-full hover:bg-scred-50">
+                  Concluir
+                </button>
+              </div>
+              <div id="evo-parity-wheel-list" class="alarm-wheel-scroll space-y-1 pr-1"></div>
+            </div>
+
+            <!-- Campo sincronizado com a planilha (permite complemento como IG 39s ou edição direta) -->
+            <div class="flex items-center gap-2 pt-0.5">
+              <span class="text-[10px] font-bold text-slate-500 shrink-0">Texto na planilha:</span>
+              <input type="text" id="evo-input-paridade" oninput="app.handleManualParityInput(this.value)" placeholder="Ex: G2 C1 (0 oculta a letra automaticamente)"
+                     class="flex-1 bg-white border border-m3-outlineVariant/80 rounded-xl px-2.5 py-1 text-xs font-bold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+            </div>
           </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">ALTO RISCO</label>
-            <input type="text" id="evo-input-altorisco" placeholder="Ex: Não / Sim (DMG, DHEG...)"
-                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <!-- ALTO RISCO: Barra clicável com lista rolável de comorbidades (múltipla escolha) + Outros -->
+          <div class="bg-m3-containerLow/80 border border-m3-outlineVariant/70 rounded-2xl p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-extrabold text-brand-950">ALTO RISCO (Comorbidades)</label>
+              <span class="text-[10px] font-bold text-slate-500">Múltipla escolha</span>
+            </div>
+
+            <button type="button" onclick="app.toggleAltoRiscoDropdown()"
+                    class="w-full bg-white border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-left flex items-center justify-between gap-2 hover:border-brand-600 transition">
+              <span id="evo-altorisco-summary" class="text-xs sm:text-sm font-extrabold text-brand-950 truncate">
+                Selecionar comorbidades...
+              </span>
+              <i id="evo-altorisco-chevron" data-lucide="chevron-down" class="w-4 h-4 text-slate-500 shrink-0 transition-transform"></i>
+            </button>
+
+            <!-- Lista rolável de comorbidades pré-definidas -->
+            <div id="evo-altorisco-dropdown" class="hidden bg-white border border-m3-outlineVariant rounded-xl p-2 max-h-48 overflow-y-auto custom-scrollbar space-y-1">
+              <div id="evo-altorisco-options-list" class="grid grid-cols-1 sm:grid-cols-2 gap-1"></div>
+            </div>
+
+            <!-- Campo de texto livre quando "Outros" estiver marcado -->
+            <div id="evo-altorisco-outros-box" class="hidden pt-1">
+              <label class="block text-[11px] font-bold text-scred-700 mb-1">Descreva outras comorbidades (Outros):</label>
+              <input type="text" id="evo-input-altorisco-outros" oninput="app.updateAltoRiscoFromUI()"
+                     placeholder="Digite outras condições de alto risco..."
+                     class="w-full bg-white border border-scred-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-scred-600 focus:outline-none">
+            </div>
+
+            <input type="hidden" id="evo-input-altorisco">
           </div>
 
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">INTERNAÇÃO POR</label>
-            <input type="text" id="evo-input-internacao" placeholder="Motivo da internação / diagnóstico obstétrico"
-                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <!-- INTERNAÇÃO POR: Barra clicável (PN, PN+DIU, CST, CST+DIU, CST+LTB, TRATAMENTO CLÍNICO) + Data/Hora do Nascimento -->
+          <div class="bg-m3-containerLow/80 border border-m3-outlineVariant/70 rounded-2xl p-3 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-extrabold text-brand-950">INTERNAÇÃO POR</label>
+              <span class="text-[10px] font-bold text-slate-500">Compatível com a planilha</span>
+            </div>
+
+            <!-- Barra clicável com as opções principais -->
+            <div id="evo-internacao-pills" class="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+              <button type="button" onclick="app.selectInternacaoOption('PN')" data-int-opt="PN"
+                      class="evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                PN
+              </button>
+              <button type="button" onclick="app.selectInternacaoOption('PN+DIU')" data-int-opt="PN+DIU"
+                      class="evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                PN+DIU
+              </button>
+              <button type="button" onclick="app.selectInternacaoOption('CST')" data-int-opt="CST"
+                      class="evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                CST
+              </button>
+              <button type="button" onclick="app.selectInternacaoOption('CST+DIU')" data-int-opt="CST+DIU"
+                      class="evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                CST+DIU
+              </button>
+              <button type="button" onclick="app.selectInternacaoOption('CST+LTB')" data-int-opt="CST+LTB"
+                      class="evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                CST+LTB
+              </button>
+              <button type="button" onclick="app.selectInternacaoOption('TRATAMENTO CLÍNICO')" data-int-opt="TRATAMENTO CLÍNICO"
+                      class="evo-int-btn py-2 px-1.5 rounded-xl border border-m3-outlineVariant bg-white text-[10px] leading-tight font-extrabold text-brand-950 hover:bg-brand-50 transition">
+                TRATAMENTO CLÍNICO
+              </button>
+            </div>
+
+            <!-- Sub-painel que abre automaticamente ao selecionar PN, PN+DIU, CST, CST+DIU ou CST+LTB -->
+            <div id="evo-birth-datetime-box" class="hidden bg-scred-50/70 border border-scred-200 rounded-xl p-2.5 space-y-2">
+              <div class="flex items-center gap-1.5 text-[11px] font-extrabold text-scred-800">
+                <i data-lucide="baby" class="w-3.5 h-3.5 text-scred-600"></i>
+                <span>Data e Hora do Nascimento (Parto / Cesárea)</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Data do Nascimento</label>
+                  <input type="date" id="evo-birth-date" onchange="app.syncInternacaoTextFromControls()"
+                         class="w-full bg-white border border-scred-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Hora do Nascimento</label>
+                  <input type="time" id="evo-birth-time" onchange="app.syncInternacaoTextFromControls()"
+                         class="w-full bg-white border border-scred-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
+                </div>
+              </div>
+            </div>
+
+            <!-- Campo de texto sincronizado bidirecionalmente com o Google Sheets -->
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-slate-500 shrink-0">Na planilha:</span>
+              <input type="text" id="evo-input-internacao" oninput="app.handleManualInternacaoInput(this.value)"
+                     placeholder="Selecione acima ou digite livremente..."
+                     class="flex-1 bg-white border border-m3-outlineVariant/80 rounded-xl px-3 py-1.5 text-xs font-bold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+            </div>
           </div>
 
-          <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">OBSERVAÇÕES / EVOLUÇÃO</label>
+          <!-- OBSERVAÇÕES / EVOLUÇÃO + Botão no canto para "Adicionar lembrete" com envio WhatsApp ao plantonista -->
+          <div class="bg-m3-containerLow/80 border border-m3-outlineVariant/70 rounded-2xl p-3 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <label class="block text-xs font-extrabold text-brand-950">OBSERVAÇÕES / EVOLUÇÃO</label>
+              <button type="button" onclick="app.toggleEvolutionReminderBox()"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-scred-600 hover:bg-scred-700 text-white text-[11px] font-extrabold shadow-2xs transition">
+                <i data-lucide="alarm-clock" class="w-3.5 h-3.5"></i>
+                <span>Adicionar lembrete</span>
+              </button>
+            </div>
+
+            <!-- Caixa para agendar lembrete clínico (ex: "verificar pressão" em determinado horário) -->
+            <div id="evo-reminder-box" class="hidden bg-white border-2 border-scred-200 rounded-xl p-3 space-y-2.5 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-extrabold text-scred-700 flex items-center gap-1.5">
+                  <i data-lucide="bell-ring" class="w-3.5 h-3.5"></i>
+                  <span>Agendar Lembrete para o Médico de Plantão</span>
+                </span>
+                <button type="button" onclick="app.toggleEvolutionReminderBox(false)" class="text-slate-400 hover:text-slate-600">
+                  <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+              <p class="text-[10px] text-slate-500 leading-snug">
+                No horário escolhido, o sistema identifica automaticamente quem está de plantão na escala e envia o lembrete via WhatsApp. Na planilha do Google Sheets ficará registrado apenas o texto do lembrete.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div class="sm:col-span-2">
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Descrição do lembrete</label>
+                  <input type="text" id="evo-reminder-text-input" placeholder="Ex: Verificar pressão, checar BCF, reavaliar..."
+                         class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                </div>
+                <div>
+                  <label class="block text-[10px] font-bold text-slate-600 mb-0.5">Horário do aviso</label>
+                  <input type="time" id="evo-reminder-time-input"
+                         class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-lg px-2.5 py-1.5 text-xs font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                </div>
+              </div>
+              <div class="flex items-center justify-between gap-2 pt-1">
+                <span id="evo-reminder-target-doctor-preview" class="text-[10px] font-bold text-brand-800 truncate"></span>
+                <button type="button" onclick="app.addClinicalReminderToObservation()"
+                        class="px-3.5 py-1.5 rounded-full bg-scred-600 hover:bg-scred-700 text-white text-xs font-extrabold flex items-center gap-1 transition shrink-0 ml-auto">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Incluir Lembrete</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Lista de lembretes agendados para este leito -->
+            <div id="evo-active-reminders-pills" class="flex flex-wrap gap-1.5 empty:hidden"></div>
+
             <textarea id="evo-input-observacoes" rows="3" placeholder="Evolução clínica, dilatação, exames, conduta e pendências para o plantão..."
-                      class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"></textarea>
+                      class="w-full bg-white border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"></textarea>
           </div>
         </div>
 
@@ -1386,14 +1638,49 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: DISPARO DE LEMBRETE CLÍNICO NO HORÁRIO AGENDADO ================= -->
+  <div id="modal-clinical-reminder-fired" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-md w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-scred-100 text-scred-600 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="alarm-clock" class="w-7 h-7"></i>
+      </div>
+      <span id="fired-reminder-time-badge" class="inline-block text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-scred-50 text-scred-700 border border-scred-200 mb-1">
+        Horário do Lembrete
+      </span>
+      <h3 id="fired-reminder-title" class="text-base sm:text-lg font-extrabold text-brand-950 leading-snug">
+        Lembrete Clínico • Maternidade
+      </h3>
+      <p id="fired-reminder-patient-info" class="text-xs text-slate-600 font-bold mt-1"></p>
+
+      <div class="my-4 p-3.5 rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 text-left space-y-1.5">
+        <div class="text-xs font-extrabold text-scred-700" id="fired-reminder-text"></div>
+        <div class="text-[11px] text-slate-600 pt-1 border-t border-m3-outlineVariant/40">
+          Plantonista no horário: <strong id="fired-reminder-doctor-name" class="text-brand-950"></strong>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <a id="fired-reminder-whatsapp-btn" href="#" target="_blank" onclick="app.closeClinicalReminderFiredModal()"
+           class="w-full py-3 px-4 rounded-full bg-scred-600 hover:bg-scred-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+          <i data-lucide="send" class="w-4 h-4"></i>
+          <span>Enviar WhatsApp ao Plantonista Agora</span>
+        </a>
+        <button type="button" onclick="app.closeClinicalReminderFiredModal()"
+                class="w-full py-2.5 px-4 text-xs font-bold text-slate-600 bg-m3-containerLow hover:bg-m3-container rounded-full transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=15"></script>
-  <script src="/app.js?v=15"></script>
+  <script src="/initial-data.js?v=16"></script>
+  <script src="/app.js?v=16"></script>
   <script>
-    const CURRENT_APP_VERSION = "v15-202611121810";
+    const CURRENT_APP_VERSION = "v16-202611122015";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1416,7 +1703,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=15", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=16", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }

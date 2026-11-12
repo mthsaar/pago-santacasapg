@@ -371,3 +371,53 @@ body {
     page-break-inside: avoid;
   }
 }
+
+/* ==========================================================================
+   MODO TELA CHEIA PARA TABELAS (MOBILE FULLSCREEN VIEW)
+   ========================================================================== */
+.table-fullscreen-active {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 65 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: #FFFFFF !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.table-fullscreen-active .week-scroll-container,
+.table-fullscreen-active .maternity-scroll-container,
+.table-fullscreen-active .stats-scroll-container {
+  flex: 1 1 auto !important;
+  max-height: none !important;
+  height: 100% !important;
+}
+
+.fullscreen-top-bar {
+  display: none;
+}
+
+.table-fullscreen-active .fullscreen-top-bar {
+  display: flex !important;
+}
+
+/* ==========================================================================
+   SELETOR DE PARIDADE ESTILO ALARME (ROLAGEM VERTICAL 0 A 20)
+   ========================================================================== */
+.alarm-wheel-scroll {
+  max-height: 176px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.alarm-wheel-item {
+  scroll-snap-align: center;
+  transition: all 0.15s ease;
+}

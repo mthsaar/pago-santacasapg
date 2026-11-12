@@ -31,6 +31,31 @@ const MATERNITY_DEFAULT_GROUPS = [
   }
 ];
 
+const ALTO_RISCO_PRESET_LIST = [
+  { code: 'NÃO', label: 'Habitual / Sem Alto Risco (Não)', isHabitual: true },
+  { code: 'DMG', label: 'DMG (Diabetes Gestacional)' },
+  { code: 'DM1/DM2', label: 'DM1 / DM2 (Diabetes Prévio)' },
+  { code: 'HAC', label: 'HAC (Hipertensão Crônica)' },
+  { code: 'DHEG/PE', label: 'DHEG / Pré-Eclâmpsia' },
+  { code: 'HIPOTIREOIDISMO', label: 'Hipotireoidismo' },
+  { code: 'OBESIDADE', label: 'Obesidade' },
+  { code: 'ITERATIVIDADE', label: 'Iteratividade (2+ Cesáreas)' },
+  { code: 'TPP', label: 'TPP / Prematuridade / IIC' },
+  { code: 'RPMO', label: 'RPMO / Bolsa Rota' },
+  { code: 'ITU', label: 'ITU / Pielonefrite' },
+  { code: 'RCIU', label: 'RCIU / Restrição Crescimento' },
+  { code: 'OLIGODRAMNIA', label: 'Oligodramnia / Polidramnia' },
+  { code: 'GEMELAR', label: 'Gestação Gemelar' },
+  { code: 'IDADE >= 35A', label: 'Idade Materna ≥ 35 anos' },
+  { code: 'TROMBOFILIA', label: 'Trombofilia / SAF' },
+  { code: 'ALOIMUNIZAÇÃO RH', label: 'Aloimunização Rh' },
+  { code: 'CARDIOPATIA', label: 'Cardiopatia / Nefropatia' },
+  { code: 'TABAGISMO', label: 'Tabagismo / Drogadição' },
+  { code: 'OUTROS', label: 'Outros (Digitar texto corrido)', isOther: true }
+];
+
+const INTERNACAO_DELIVERY_TYPES = ['PN', 'PN+DIU', 'CST', 'CST+DIU', 'CST+LTB'];
+
 const app = {
   state: {
     isEditorMode: false,
@@ -70,7 +95,13 @@ const app = {
       channel: localStorage.getItem('shift_reminder_channel') || 'whatsapp',
       webhook_url: localStorage.getItem('shift_reminder_webhook') || ''
     },
-    sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}')
+    sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}'),
+    evoParity: { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' },
+    evoAltoRiscoSelected: [],
+    evoAltoRiscoOutros: '',
+    evoInternacaoSelected: '',
+    evoInternacaoExtra: '',
+    clinicalReminders: JSON.parse(localStorage.getItem('maternity_clinical_reminders') || '[]')
   },
 
   async init() {
@@ -94,6 +125,7 @@ const app = {
     await this.loadAllData();
     this.syncMaternityFromGoogleSheet();
     this.checkAndTriggerOneHourShiftReminders();
+    this.checkClinicalReminders();
 
     this.switchView(this.state.currentView);
 
@@ -101,7 +133,18 @@ const app = {
       this.updateTableColumnMetrics();
     });
 
+    const reminderTimeInput = document.getElementById('evo-reminder-time-input');
+    if (reminderTimeInput) {
+      reminderTimeInput.addEventListener('input', () => this.updateReminderDoctorPreview());
+    }
+
     window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.table-fullscreen-active').forEach(el => {
+          el.classList.remove('table-fullscreen-active');
+          this.updateTableColumnMetrics();
+        });
+      }
       if (!this.state.isEditorMode || this.state.currentView !== 'spreadsheet') return;
       const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -119,6 +162,10 @@ const app = {
       this.loadNowStatus();
       this.checkAndTriggerOneHourShiftReminders();
     }, 60000);
+
+    setInterval(() => {
+      this.checkClinicalReminders();
+    }, 20000);
 
     setInterval(() => {
       this.syncMaternityFromGoogleSheet();
@@ -242,6 +289,35 @@ const app = {
           this.updateReminderActiveDot();
         }
       }
+    });
+
+    this.state.firestoreDb.collection('maternity_clinical_reminders').onSnapshot(snapshot => {
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      this.state.clinicalReminders = list;
+      try {
+        localStorage.setItem('maternity_clinical_reminders', JSON.stringify(list));
+      } catch (e) {}
+    });
+  },
+
+  toggleTableFullscreen(cardId) {
+    const el = document.getElementById(cardId);
+    if (!el) return;
+    const isNowFullscreen = !el.classList.contains('table-fullscreen-active');
+    document.querySelectorAll('.table-fullscreen-active').forEach(node => {
+      node.classList.remove('table-fullscreen-active');
+    });
+    if (isNowFullscreen) {
+      el.classList.add('table-fullscreen-active');
+      if (cardId === 'card-stats-professionals') {
+        const bodyEl = document.getElementById('body-stats-professionals');
+        if (bodyEl) bodyEl.classList.remove('hidden');
+      }
+    }
+    requestAnimationFrame(() => {
+      this.updateTableColumnMetrics();
+      if (window.lucide) lucide.createIcons();
     });
   },
 
@@ -2386,6 +2462,754 @@ const app = {
     if (riskEl) riskEl.value = data.alto_risco || '';
     if (intEl) intEl.value = data.internacao_por || '';
     if (obsEl) obsEl.value = data.observacoes || '';
+
+    this.closeParityWheel();
+    this.parseParityToState(data.paridade || '');
+    this.renderParityUI();
+
+    this.toggleAltoRiscoDropdown(false);
+    this.parseAltoRiscoToState(data.alto_risco || '');
+    this.renderAltoRiscoUI();
+
+    this.parseInternacaoToState(data.internacao_por || '');
+
+    this.toggleEvolutionReminderBox(false);
+    this.renderEvolutionActiveReminders(leito);
+  },
+
+  // =========================================================================
+  // 2C. PARIDADE (G P C A E M DE 0 A 20 ESTILO ALARME • 0 OCULTA A LETRA)
+  // =========================================================================
+  parseParityToState(rawStr) {
+    const letters = ['G', 'P', 'C', 'A', 'E', 'M'];
+    const nextState = { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' };
+    let str = String(rawStr || '').trim();
+
+    if (str) {
+      letters.forEach(L => {
+        const regex = new RegExp(`\\b${L}\\s*(\\d{1,2})`, 'i');
+        const compactRegex = new RegExp(`${L}(\\d{1,2})`, 'i');
+        const m = str.match(regex) || str.match(compactRegex);
+        if (m) {
+          const val = Math.min(20, Math.max(0, parseInt(m[1], 10)));
+          nextState[L] = isNaN(val) ? 0 : val;
+        }
+      });
+
+      // Preserva qualquer complemento adicional que o médico tenha escrito na planilha (ex: "IG 39s", "38s2d")
+      let remainder = str
+        .replace(/\b[GPCAEM]\s*\d{1,2}\b/gi, '')
+        .replace(/[GPCAEM]\d{1,2}/gi, '')
+        .replace(/^[\s•,;/\-]+|[\s•,;/\-]+$/g, '')
+        .trim();
+      nextState.extraText = remainder;
+    }
+
+    this.state.evoParity = nextState;
+  },
+
+  buildParityStringFromState() {
+    const p = this.state.evoParity || { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, extraText: '' };
+    const letters = ['G', 'P', 'C', 'A', 'E', 'M'];
+    const activeTokens = [];
+
+    letters.forEach(L => {
+      const num = Number(p[L] || 0);
+      // Ao selecionar 0, a letra desaparece (não gera P0, A0, E0, M0)
+      if (num > 0) {
+        activeTokens.push(`${L}${num}`);
+      }
+    });
+
+    const base = activeTokens.join(' ');
+    if (p.extraText && p.extraText.trim() !== '') {
+      return base ? `${base} • ${p.extraText.trim()}` : p.extraText.trim();
+    }
+    return base;
+  },
+
+  renderParityUI() {
+    const p = this.state.evoParity || { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0 };
+    const letters = ['G', 'P', 'C', 'A', 'E', 'M'];
+
+    letters.forEach(L => {
+      const val = Number(p[L] || 0);
+      const valEl = document.getElementById(`val-parity-${L}`);
+      const btnEl = document.getElementById(`btn-parity-${L}`);
+      const isWheelOpen = p.activeLetter === L;
+
+      if (valEl) {
+        valEl.textContent = val > 0 ? `${L}${val}` : '0';
+        valEl.className = val > 0
+          ? 'text-xs sm:text-sm font-extrabold text-scred-700'
+          : 'text-xs sm:text-sm font-bold text-slate-300';
+      }
+      if (btnEl) {
+        if (isWheelOpen) {
+          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-scred-600 bg-scred-50/70 shadow-xs transition';
+        } else if (val > 0) {
+          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-brand-600 bg-brand-50/60 transition';
+        } else {
+          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-500 transition opacity-75';
+        }
+      }
+    });
+
+    const formatted = this.buildParityStringFromState();
+    const badgeEl = document.getElementById('evo-parity-preview-badge');
+    if (badgeEl) {
+      badgeEl.textContent = formatted || 'Nenhuma letra ativa';
+    }
+  },
+
+  openParityWheel(letter) {
+    if (!this.state.evoParity) {
+      this.state.evoParity = { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' };
+    }
+    if (this.state.evoParity.activeLetter === letter) {
+      this.closeParityWheel();
+      return;
+    }
+
+    this.state.evoParity.activeLetter = letter;
+    this.renderParityUI();
+
+    const popover = document.getElementById('evo-parity-wheel-popover');
+    const titleEl = document.getElementById('evo-parity-wheel-title');
+    const listEl = document.getElementById('evo-parity-wheel-list');
+    if (!popover || !listEl) return;
+
+    const labelsMap = {
+      G: 'G (Gestações)',
+      P: 'P (Partos)',
+      C: 'C (Cesáreas)',
+      A: 'A (Abortos)',
+      E: 'E (Ectópicas)',
+      M: 'M (Mola / Gemelar)'
+    };
+    if (titleEl) {
+      titleEl.textContent = `Selecionar ${labelsMap[letter] || letter} (0 oculta a letra)`;
+    }
+
+    const currentVal = Number(this.state.evoParity[letter] || 0);
+    let itemsHtml = '';
+    for (let n = 0; n <= 20; n++) {
+      const isSelected = n === currentVal;
+      const labelText = n === 0
+        ? `0 — Ocultar letra ${letter}`
+        : `${letter}${n}`;
+      itemsHtml += `
+        <button type="button" id="parity-wheel-opt-${n}" onclick="app.selectParityNumber('${letter}', ${n})"
+                class="alarm-wheel-item w-full py-2 px-3 rounded-xl text-center font-extrabold text-xs sm:text-sm flex items-center justify-between transition ${
+                  isSelected
+                    ? 'bg-scred-600 text-white shadow-xs'
+                    : 'bg-m3-containerLow/60 hover:bg-brand-50 text-brand-950'
+                }">
+          <span>${labelText}</span>
+          ${isSelected ? '<span class="text-[10px] uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Selecionado</span>' : ''}
+        </button>
+      `;
+    }
+
+    listEl.innerHTML = itemsHtml;
+    popover.classList.remove('hidden');
+
+    requestAnimationFrame(() => {
+      const selectedBtn = document.getElementById(`parity-wheel-opt-${currentVal}`);
+      if (selectedBtn) {
+        selectedBtn.scrollIntoView({ block: 'center', behavior: 'instant' });
+      }
+    });
+  },
+
+  closeParityWheel() {
+    if (this.state.evoParity) {
+      this.state.evoParity.activeLetter = null;
+    }
+    const popover = document.getElementById('evo-parity-wheel-popover');
+    if (popover) popover.classList.add('hidden');
+    this.renderParityUI();
+  },
+
+  selectParityNumber(letter, num) {
+    if (!this.state.evoParity) {
+      this.state.evoParity = { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' };
+    }
+    this.state.evoParity[letter] = Math.min(20, Math.max(0, Number(num || 0)));
+    const formatted = this.buildParityStringFromState();
+    const parEl = document.getElementById('evo-input-paridade');
+    if (parEl) parEl.value = formatted;
+
+    this.closeParityWheel();
+  },
+
+  handleManualParityInput(val) {
+    this.parseParityToState(val);
+    this.renderParityUI();
+  },
+
+  // =========================================================================
+  // 2D. ALTO RISCO (COMORBIDADES PRÉ-DEFINIDAS + MÚLTIPLA ESCOLHA + OUTROS)
+  // =========================================================================
+  parseAltoRiscoToState(rawStr) {
+    const str = String(rawStr || '').trim();
+    if (!str) {
+      this.state.evoAltoRiscoSelected = [];
+      this.state.evoAltoRiscoOutros = '';
+      return;
+    }
+
+    const tokens = str.split(/[,;+/\n]+/).map(s => s.trim()).filter(Boolean);
+    const selected = new Set();
+    const unmatched = [];
+
+    tokens.forEach(tok => {
+      const u = tok.toUpperCase();
+      if (['NÃO', 'NAO', 'N', 'HABITUAL', 'RISCO HABITUAL', 'BAIXO'].includes(u)) {
+        selected.add('NÃO');
+      } else if (u === 'DMG' || u.includes('DIABETES GEST')) {
+        selected.add('DMG');
+      } else if (u.includes('DM1') || u.includes('DM2') || u === 'DM') {
+        selected.add('DM1/DM2');
+      } else if (u === 'HAC' || u.includes('HIPERTENS')) {
+        selected.add('HAC');
+      } else if (u.includes('DHEG') || u.includes('PE') || u.includes('ECLÂMPSIA') || u.includes('ECLAMPSIA')) {
+        selected.add('DHEG/PE');
+      } else if (u.includes('HIPOTIREOID')) {
+        selected.add('HIPOTIREOIDISMO');
+      } else if (u.includes('OBESIDADE') || u.includes('IMC')) {
+        selected.add('OBESIDADE');
+      } else if (u.includes('ITERATIV')) {
+        selected.add('ITERATIVIDADE');
+      } else if (u.includes('TPP') || u.includes('PREMATUR') || u.includes('IIC')) {
+        selected.add('TPP');
+      } else if (u.includes('RPMO') || u.includes('BOLSA ROTA') || u.includes('AMNIORREXE')) {
+        selected.add('RPMO');
+      } else if (u.includes('ITU') || u.includes('PIELONEFRITE')) {
+        selected.add('ITU');
+      } else if (u.includes('RCIU') || u.includes('CIUR') || u.includes('RESTRI')) {
+        selected.add('RCIU');
+      } else if (u.includes('OLIGODR') || u.includes('POLIDR')) {
+        selected.add('OLIGODRAMNIA');
+      } else if (u.includes('GEMELAR')) {
+        selected.add('GEMELAR');
+      } else if (u.includes('IDADE') || u.includes('35')) {
+        selected.add('IDADE >= 35A');
+      } else if (u.includes('TROMBO') || u.includes('SAF') || u.includes('SAAF')) {
+        selected.add('TROMBOFILIA');
+      } else if (u.includes('ALOIMUN') || u.includes('RH')) {
+        selected.add('ALOIMUNIZAÇÃO RH');
+      } else if (u.includes('CARDIO') || u.includes('NEFRO')) {
+        selected.add('CARDIOPATIA');
+      } else if (u.includes('TABAG') || u.includes('DROG')) {
+        selected.add('TABAGISMO');
+      } else {
+        unmatched.push(tok);
+      }
+    });
+
+    if (unmatched.length > 0) {
+      selected.delete('NÃO');
+      selected.add('OUTROS');
+      this.state.evoAltoRiscoOutros = unmatched.join(', ');
+    } else {
+      this.state.evoAltoRiscoOutros = '';
+    }
+
+    this.state.evoAltoRiscoSelected = Array.from(selected);
+  },
+
+  renderAltoRiscoUI() {
+    const listEl = document.getElementById('evo-altorisco-options-list');
+    const summaryEl = document.getElementById('evo-altorisco-summary');
+    const outrosBox = document.getElementById('evo-altorisco-outros-box');
+    const outrosInput = document.getElementById('evo-input-altorisco-outros');
+    const hiddenInput = document.getElementById('evo-input-altorisco');
+
+    const selected = this.state.evoAltoRiscoSelected || [];
+    const hasOutros = selected.includes('OUTROS');
+
+    if (listEl) {
+      listEl.innerHTML = ALTO_RISCO_PRESET_LIST.map(item => {
+        const isChecked = selected.includes(item.code);
+        const safeCode = item.code.replace(/'/g, "\\'");
+        return `
+          <button type="button" onclick="app.toggleAltoRiscoItem('${safeCode}')"
+                  class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-left text-xs font-bold transition ${
+                    isChecked
+                      ? item.isHabitual
+                        ? 'bg-brand-700 text-white shadow-2xs'
+                        : 'bg-scred-600 text-white shadow-2xs'
+                      : 'bg-m3-containerLow/70 hover:bg-brand-50 text-brand-950'
+                  }">
+            <span class="truncate">${this.escapeHtml(item.label)}</span>
+            <span class="w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+              isChecked ? 'border-white bg-white/20 text-white' : 'border-slate-300 bg-white'
+            }">
+              ${isChecked ? '✓' : ''}
+            </span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    if (outrosBox) {
+      outrosBox.classList.toggle('hidden', !hasOutros);
+    }
+    if (outrosInput && outrosInput.value !== (this.state.evoAltoRiscoOutros || '')) {
+      outrosInput.value = this.state.evoAltoRiscoOutros || '';
+    }
+
+    const finalParts = [];
+    selected.forEach(code => {
+      if (code === 'OUTROS') {
+        const customTxt = (outrosInput ? outrosInput.value : this.state.evoAltoRiscoOutros || '').trim();
+        if (customTxt) finalParts.push(customTxt);
+      } else {
+        finalParts.push(code);
+      }
+    });
+
+    const finalStr = finalParts.join(' + ');
+    if (hiddenInput) hiddenInput.value = finalStr;
+    if (summaryEl) {
+      summaryEl.textContent = finalStr || 'Selecionar comorbidades...';
+      summaryEl.className = finalStr
+        ? (selected.includes('NÃO') ? 'text-xs sm:text-sm font-extrabold text-brand-800 truncate' : 'text-xs sm:text-sm font-extrabold text-scred-700 truncate')
+        : 'text-xs sm:text-sm font-semibold text-slate-400 truncate';
+    }
+  },
+
+  toggleAltoRiscoDropdown(forceState = null) {
+    const drop = document.getElementById('evo-altorisco-dropdown');
+    const chev = document.getElementById('evo-altorisco-chevron');
+    if (!drop) return;
+
+    const shouldShow = forceState !== null ? forceState : drop.classList.contains('hidden');
+    drop.classList.toggle('hidden', !shouldShow);
+    if (chev) {
+      chev.style.transform = shouldShow ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+  },
+
+  toggleAltoRiscoItem(code) {
+    let selected = new Set(this.state.evoAltoRiscoSelected || []);
+    if (code === 'NÃO') {
+      if (selected.has('NÃO')) {
+        selected.delete('NÃO');
+      } else {
+        selected.clear();
+        selected.add('NÃO');
+      }
+    } else {
+      selected.delete('NÃO');
+      if (selected.has(code)) {
+        selected.delete(code);
+      } else {
+        selected.add(code);
+      }
+    }
+
+    this.state.evoAltoRiscoSelected = Array.from(selected);
+    this.renderAltoRiscoUI();
+  },
+
+  updateAltoRiscoFromUI() {
+    const outrosInput = document.getElementById('evo-input-altorisco-outros');
+    this.state.evoAltoRiscoOutros = outrosInput ? outrosInput.value : '';
+    this.renderAltoRiscoUI();
+  },
+
+  // =========================================================================
+  // 2E. INTERNAÇÃO POR (PN, PN+DIU, CST, CST+DIU, CST+LTB, TRATAMENTO CLÍNICO
+  //     + DATA/HORA DO NASCIMENTO + CONVERSÃO BIDIRECIONAL COM GOOGLE SHEETS)
+  // =========================================================================
+  parseInternacaoToState(rawStr) {
+    const str = String(rawStr || '').trim();
+    const upper = str.toUpperCase();
+
+    let matchedOpt = '';
+    if (
+      upper.includes('CST+LTB') || upper.includes('CST + LTB') ||
+      ((upper.includes('CESAREA') || upper.includes('CESÁREA') || upper.includes('CST') || upper.includes('PC')) &&
+       (upper.includes('LTB') || upper.includes('LAQUEADURA')))
+    ) {
+      matchedOpt = 'CST+LTB';
+    } else if (
+      upper.includes('CST+DIU') || upper.includes('CST + DIU') ||
+      ((upper.includes('CESAREA') || upper.includes('CESÁREA') || upper.includes('CST') || upper.includes('PC')) && upper.includes('DIU'))
+    ) {
+      matchedOpt = 'CST+DIU';
+    } else if (
+      upper.includes('PN+DIU') || upper.includes('PN + DIU') ||
+      ((upper.includes('PARTO NORMAL') || upper.includes('PN') || upper.includes('PARTO VAGINAL')) && upper.includes('DIU'))
+    ) {
+      matchedOpt = 'PN+DIU';
+    } else if (
+      upper.startsWith('CST') || upper === 'PC' || upper.includes('CESÁREA') || upper.includes('CESAREA') || upper.includes('CESARIANA')
+    ) {
+      matchedOpt = 'CST';
+    } else if (
+      upper.startsWith('PN') || upper.includes('PARTO NORMAL') || upper.includes('PARTO VAGINAL')
+    ) {
+      matchedOpt = 'PN';
+    } else if (
+      upper.includes('TRATAMENTO CLÍNICO') || upper.includes('TRATAMENTO CLINICO') || upper.includes('TTO CLÍNICO') || upper.includes('TTO CLINICO')
+    ) {
+      matchedOpt = 'TRATAMENTO CLÍNICO';
+    }
+
+    this.state.evoInternacaoSelected = matchedOpt;
+
+    // Extrai data (DD/MM ou DD/MM/AAAA) e hora (HH:MM ou HHhMM) se o médico digitou na planilha
+    const dateInput = document.getElementById('evo-birth-date');
+    const timeInput = document.getElementById('evo-birth-time');
+
+    if (dateInput) {
+      const dMatch = str.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+      if (dMatch) {
+        const day = String(dMatch[1]).padStart(2, '0');
+        const month = String(dMatch[2]).padStart(2, '0');
+        let year = dMatch[3] ? String(dMatch[3]) : (this.state.currentMonth ? this.state.currentMonth.slice(0, 4) : '2026');
+        if (year.length === 2) year = `20${year}`;
+        dateInput.value = `${year}-${month}-${day}`;
+      } else {
+        dateInput.value = '';
+      }
+    }
+
+    if (timeInput) {
+      const tMatch = str.match(/\b(\d{1,2})\s*(?::|h|H)\s*(\d{2})\b/) || str.match(/\b(?:às|as|ÀS|AS)\s*(\d{1,2})[hH]\b/);
+      if (tMatch) {
+        const hh = String(Math.min(23, parseInt(tMatch[1], 10))).padStart(2, '0');
+        const mm = String(Math.min(59, parseInt(tMatch[2] || '0', 10))).padStart(2, '0');
+        timeInput.value = `${hh}:${mm}`;
+      } else {
+        timeInput.value = '';
+      }
+    }
+
+    this.renderInternacaoControlsUI();
+  },
+
+  renderInternacaoControlsUI() {
+    const selectedOpt = this.state.evoInternacaoSelected || '';
+    const isDelivery = INTERNACAO_DELIVERY_TYPES.includes(selectedOpt);
+
+    document.querySelectorAll('.evo-int-btn').forEach(btn => {
+      const opt = btn.getAttribute('data-int-opt');
+      if (opt === selectedOpt) {
+        btn.className = 'evo-int-btn py-2 px-2 rounded-xl border-2 border-scred-600 bg-scred-600 text-white text-xs font-extrabold shadow-xs transition';
+      } else {
+        btn.className = 'evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition';
+      }
+    });
+
+    const birthBox = document.getElementById('evo-birth-datetime-box');
+    if (birthBox) {
+      birthBox.classList.toggle('hidden', !isDelivery);
+    }
+  },
+
+  selectInternacaoOption(opt) {
+    if (this.state.evoInternacaoSelected === opt) {
+      // Mantém selecionado e foca nos campos
+    } else {
+      this.state.evoInternacaoSelected = opt;
+    }
+    this.renderInternacaoControlsUI();
+    this.syncInternacaoTextFromControls();
+  },
+
+  syncInternacaoTextFromControls() {
+    const opt = this.state.evoInternacaoSelected;
+    if (!opt) return;
+
+    const intEl = document.getElementById('evo-input-internacao');
+    const dateInput = document.getElementById('evo-birth-date');
+    const timeInput = document.getElementById('evo-birth-time');
+
+    if (INTERNACAO_DELIVERY_TYPES.includes(opt)) {
+      const dVal = dateInput ? dateInput.value : '';
+      const tVal = timeInput ? timeInput.value : '';
+      let birthInfo = '';
+      if (dVal) {
+        const [, m, d] = dVal.split('-');
+        birthInfo = `${d}/${m}`;
+      }
+      if (tVal) {
+        birthInfo = birthInfo ? `${birthInfo} às ${tVal}` : `às ${tVal}`;
+      }
+      if (intEl) {
+        intEl.value = birthInfo ? `${opt} (${birthInfo})` : opt;
+      }
+    } else {
+      if (intEl) {
+        intEl.value = opt;
+      }
+    }
+  },
+
+  handleManualInternacaoInput(val) {
+    this.parseInternacaoToState(val);
+  },
+
+  // =========================================================================
+  // 2F. LEMBRETE CLÍNICO EM OBSERVAÇÕES (ENVIO WHATSAPP AO MÉDICO DE PLANTÃO)
+  // =========================================================================
+  toggleEvolutionReminderBox(forceState = null) {
+    const box = document.getElementById('evo-reminder-box');
+    if (!box) return;
+    const shouldShow = forceState !== null ? forceState : box.classList.contains('hidden');
+    box.classList.toggle('hidden', !shouldShow);
+
+    if (shouldShow) {
+      const timeInput = document.getElementById('evo-reminder-time-input');
+      if (timeInput && !timeInput.value) {
+        const nextHour = new Date(Date.now() + 3600000);
+        const hh = String(nextHour.getHours()).padStart(2, '0');
+        const mm = String(nextHour.getMinutes()).padStart(2, '0');
+        timeInput.value = `${hh}:${mm}`;
+      }
+      this.updateReminderDoctorPreview();
+      if (window.lucide) lucide.createIcons();
+    }
+  },
+
+  getDoctorsOnCallAtTime(timeStr, dateStr = null) {
+    const [hhStr] = String(timeStr || '12:00').split(':');
+    const hour = parseInt(hhStr, 10);
+
+    const now = new Date();
+    const targetDateStr = dateStr || this.state.selectedDate || now.toISOString().slice(0, 10);
+
+    // Determina quais turnos estão ativos naquele horário
+    let activeTypes = [];
+    if (hour >= 7 && hour < 13) {
+      activeTypes = ['morning', 'routine'];
+    } else if (hour >= 13 && hour < 19) {
+      activeTypes = ['afternoon'];
+    } else if (hour >= 19 && hour < 23) {
+      activeTypes = ['evening', 'night'];
+    } else {
+      activeTypes = ['night'];
+    }
+
+    let matching = this.state.shifts.filter(s => s.date === targetDateStr && activeTypes.includes(s.shift_type));
+    if (matching.length === 0 && this.state.selectedDate) {
+      matching = this.state.shifts.filter(s => s.date === this.state.selectedDate && activeTypes.includes(s.shift_type));
+    }
+
+    const seenDocIds = new Set();
+    const doctors = [];
+    matching.forEach(s => {
+      if (seenDocIds.has(String(s.doctor_id))) return;
+      seenDocIds.add(String(s.doctor_id));
+      const docObj = this.state.doctors.find(d => String(d.id) === String(s.doctor_id)) || {};
+      doctors.push({
+        id: s.doctor_id,
+        name: docObj.name || s.doctor_name || 'Plantonista',
+        phone: docObj.phone || s.doctor_phone || '',
+        shift_type: s.shift_type
+      });
+    });
+
+    return doctors;
+  },
+
+  updateReminderDoctorPreview() {
+    const timeInput = document.getElementById('evo-reminder-time-input');
+    const previewEl = document.getElementById('evo-reminder-target-doctor-preview');
+    if (!previewEl) return;
+
+    const timeVal = (timeInput && timeInput.value) ? timeInput.value : '12:00';
+    const docs = this.getDoctorsOnCallAtTime(timeVal);
+    if (docs.length > 0) {
+      previewEl.textContent = `Plantonista às ${timeVal}: ${docs.map(d => d.name).join(', ')}`;
+    } else {
+      previewEl.textContent = `Aviso agendado para o plantonista das ${timeVal}`;
+    }
+  },
+
+  async addClinicalReminderToObservation() {
+    const leitoSelect = document.getElementById('evo-select-leito');
+    const textInput = document.getElementById('evo-reminder-text-input');
+    const timeInput = document.getElementById('evo-reminder-time-input');
+    const obsEl = document.getElementById('evo-input-observacoes');
+    const nomeEl = document.getElementById('evo-input-nome');
+
+    const leito = leitoSelect ? leitoSelect.value : 'PRÉ 1';
+    const reminderText = (textInput ? textInput.value : '').trim();
+    const reminderTime = (timeInput ? timeInput.value : '').trim();
+
+    if (!reminderText) {
+      this.showToast('Digite o texto do lembrete (ex: Verificar pressão).', 'info');
+      return;
+    }
+    if (!reminderTime) {
+      this.showToast('Selecione o horário do lembrete.', 'info');
+      return;
+    }
+
+    // Na tabela do Google Sheets fica APENAS o texto com o lembrete descrito
+    if (obsEl) {
+      const currentObs = obsEl.value.trim();
+      if (!currentObs.toLowerCase().includes(reminderText.toLowerCase())) {
+        obsEl.value = currentObs ? `${currentObs}\nLembrete: ${reminderText}` : `Lembrete: ${reminderText}`;
+      }
+    }
+
+    const reminderObj = {
+      id: `rem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      leito,
+      patient_name: (nomeEl ? nomeEl.value : '').trim() || `Leito ${leito}`,
+      text: reminderText,
+      time: reminderTime,
+      created_date: new Date().toISOString().slice(0, 10),
+      fired: false,
+      created_at: new Date().toISOString()
+    };
+
+    if (!this.state.clinicalReminders) this.state.clinicalReminders = [];
+    this.state.clinicalReminders.push(reminderObj);
+
+    try {
+      localStorage.setItem('maternity_clinical_reminders', JSON.stringify(this.state.clinicalReminders));
+    } catch (e) {}
+
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      this.state.firestoreDb.collection('maternity_clinical_reminders').doc(reminderObj.id).set(reminderObj).catch(() => {});
+    }
+
+    if (textInput) textInput.value = '';
+    this.toggleEvolutionReminderBox(false);
+    this.renderEvolutionActiveReminders(leito);
+    this.showToast(`Lembrete "${reminderText}" agendado para ${reminderTime}!`, 'success');
+  },
+
+  removeClinicalReminder(reminderId) {
+    const leitoSelect = document.getElementById('evo-select-leito');
+    const leito = leitoSelect ? leitoSelect.value : 'PRÉ 1';
+
+    this.state.clinicalReminders = (this.state.clinicalReminders || []).filter(r => r.id !== reminderId);
+    try {
+      localStorage.setItem('maternity_clinical_reminders', JSON.stringify(this.state.clinicalReminders));
+    } catch (e) {}
+
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      this.state.firestoreDb.collection('maternity_clinical_reminders').doc(reminderId).delete().catch(() => {});
+    }
+
+    this.renderEvolutionActiveReminders(leito);
+  },
+
+  renderEvolutionActiveReminders(leito) {
+    const container = document.getElementById('evo-active-reminders-pills');
+    if (!container) return;
+
+    const targetKey = this.normalizeLeitoKey(leito);
+    const list = (this.state.clinicalReminders || []).filter(
+      r => this.normalizeLeitoKey(r.leito) === targetKey && !r.fired
+    );
+
+    if (list.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = list.map(r => {
+      const docs = this.getDoctorsOnCallAtTime(r.time);
+      const docLabel = docs.length > 0 ? docs[0].name : 'Plantonista';
+      return `
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-scred-50 text-scred-800 border border-scred-200 text-[11px] font-extrabold">
+          <i data-lucide="alarm-clock" class="w-3 h-3 text-scred-600"></i>
+          <span>${this.escapeHtml(r.time)} • ${this.escapeHtml(r.text)} (${this.escapeHtml(docLabel)})</span>
+          <button type="button" onclick="app.removeClinicalReminder('${r.id}')" class="hover:text-scred-950 ml-0.5">×</button>
+        </span>
+      `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+  },
+
+  async checkClinicalReminders() {
+    const list = this.state.clinicalReminders || [];
+    if (list.length === 0) return;
+
+    const now = new Date();
+    const curHH = String(now.getHours()).padStart(2, '0');
+    const curMM = String(now.getMinutes()).padStart(2, '0');
+    const curTimeStr = `${curHH}:${curMM}`;
+
+    for (const rem of list) {
+      if (rem.fired) continue;
+      if (rem.time !== curTimeStr) continue;
+
+      rem.fired = true;
+      rem.fired_at = now.toISOString();
+      try {
+        localStorage.setItem('maternity_clinical_reminders', JSON.stringify(this.state.clinicalReminders));
+      } catch (e) {}
+
+      if (this.state.firebaseActive && this.state.firestoreDb) {
+        this.state.firestoreDb.collection('maternity_clinical_reminders').doc(rem.id).set({
+          fired: true,
+          fired_at: rem.fired_at
+        }, { merge: true }).catch(() => {});
+      }
+
+      const onCallDocs = this.getDoctorsOnCallAtTime(rem.time);
+      const primaryDoc = onCallDocs[0] || { name: 'Plantonista em Turno', phone: '' };
+      const allDocNames = onCallDocs.length > 0 ? onCallDocs.map(d => d.name).join(', ') : 'Médico(a) Plantonista';
+
+      const msg = `Olá Dr(a). ${primaryDoc.name}, lembrete clínico agendado (${rem.time}) na Maternidade Santa Casa PG:\n• Leito ${rem.leito} (${rem.patient_name || 'Paciente'}): ${rem.text}`;
+
+      // 1. Se houver gateway / webhook configurado, envia automaticamente para todos os médicos de plantão no horário
+      for (const doc of onCallDocs) {
+        if (this.cleanPhone(doc.phone).length >= 8) {
+          await this.sendShiftReminderPayload({
+            doctor_id: doc.id,
+            doctor_name: doc.name,
+            phone: doc.phone,
+            role_label: `Lembrete Leito ${rem.leito}`,
+            start_time: rem.time,
+            date: now.toISOString().slice(0, 10),
+            message: `Olá Dr(a). ${doc.name}, lembrete clínico agendado (${rem.time}) na Maternidade Santa Casa PG - Leito ${rem.leito} (${rem.patient_name || 'Paciente'}): ${rem.text}`
+          }, (this.state.shiftReminderConfig && this.state.shiftReminderConfig.channel) || 'whatsapp');
+        }
+      }
+
+      // 2. Exibe o alerta visual na tela com link direto do WhatsApp do médico de plantão
+      this.openClinicalReminderFiredModal(rem, allDocNames, primaryDoc.phone, msg);
+    }
+  },
+
+  openClinicalReminderFiredModal(rem, docNames, phone, message) {
+    const modal = document.getElementById('modal-clinical-reminder-fired');
+    const badgeEl = document.getElementById('fired-reminder-time-badge');
+    const patientEl = document.getElementById('fired-reminder-patient-info');
+    const textEl = document.getElementById('fired-reminder-text');
+    const docEl = document.getElementById('fired-reminder-doctor-name');
+    const waBtn = document.getElementById('fired-reminder-whatsapp-btn');
+
+    if (badgeEl) badgeEl.textContent = `Agendado para ${rem.time}`;
+    if (patientEl) patientEl.textContent = `Leito ${rem.leito} • ${rem.patient_name || 'Paciente'}`;
+    if (textEl) textEl.textContent = `Lembrete: ${rem.text}`;
+    if (docEl) docEl.textContent = docNames;
+
+    if (waBtn) {
+      const clean = this.cleanPhone(phone);
+      const encoded = encodeURIComponent(message);
+      waBtn.href = clean ? `https://wa.me/55${clean}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
+    }
+
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeClinicalReminderFiredModal() {
+    const modal = document.getElementById('modal-clinical-reminder-fired');
+    if (modal) modal.classList.add('hidden');
   },
 
   async handleSaveMaternityEvolution(e) {
