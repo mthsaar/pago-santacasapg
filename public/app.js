@@ -59,6 +59,11 @@ const app = {
     maternitySheetMap: {},
     maternityLastSheetHash: {},
     maternityExtraBeds: [],
+    maternityAdmissions: JSON.parse(localStorage.getItem('maternity_admissions_cache') || '[]'),
+    statsCollapsed: {
+      professionals: false,
+      patients: false
+    },
     maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || ''
   },
 
@@ -184,6 +189,23 @@ const app = {
       });
       this.state.maternityFirebaseMap = map;
       this.renderMaternityView();
+      if (this.state.currentView === 'stats') {
+        const picker = document.getElementById('stats-month-picker');
+        this.renderPatientStats((picker && picker.value) ? picker.value : this.state.currentMonth);
+      }
+    });
+
+    this.state.firestoreDb.collection('maternity_admissions').onSnapshot(snapshot => {
+      const list = [];
+      snapshot.forEach(doc => list.push({ id: doc.id, ...doc.data() }));
+      this.state.maternityAdmissions = list;
+      try {
+        localStorage.setItem('maternity_admissions_cache', JSON.stringify(list));
+      } catch (e) {}
+      if (this.state.currentView === 'stats') {
+        const picker = document.getElementById('stats-month-picker');
+        this.renderPatientStats((picker && picker.value) ? picker.value : this.state.currentMonth);
+      }
     });
 
     this.state.firestoreDb.collection('settings').doc('maternity_sheet_sync').onSnapshot(doc => {
@@ -1416,7 +1438,7 @@ const app = {
     if (rows.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="3" class="px-4 py-6 text-center text-xs text-slate-500 font-semibold">
+          <td colspan="2" class="px-4 py-6 text-center text-xs text-slate-500 font-semibold">
             Nenhum plantonista escalado para o horário atual.
           </td>
         </tr>
@@ -1435,12 +1457,6 @@ const app = {
 
       return `
         <tr class="hover:bg-brand-50/40 transition">
-          <td class="px-3.5 py-2.5 border-r border-m3-outlineVariant/40 align-middle whitespace-nowrap">
-            <div class="inline-flex flex-col items-start px-2.5 py-1 rounded-xl ${item.badgeClass}">
-              <span class="text-xs font-extrabold leading-none">${item.badgeText}</span>
-              <span class="text-[10px] font-bold opacity-85 mt-0.5 leading-none">${item.subLabel}</span>
-            </div>
-          </td>
           <td class="px-3.5 py-2.5 border-r border-m3-outlineVariant/40 align-middle">
             <div class="flex items-center gap-2.5 cursor-pointer group" onclick="app.openDoctorProfileById('${shift.doctor_id}')">
               <div class="w-9 h-9 rounded-xl overflow-hidden border border-brand-200 bg-brand-50 shrink-0 flex items-center justify-center">
@@ -1450,7 +1466,7 @@ const app = {
                 <div class="font-extrabold text-brand-950 text-xs sm:text-sm group-hover:text-brand-700 group-hover:underline truncate">
                   ${docName}
                 </div>
-                <div class="flex items-center gap-1.5 mt-0.5">
+                <div class="flex flex-wrap items-center gap-1.5 mt-0.5">
                   <span class="text-[10px] font-bold text-brand-800 bg-brand-100 px-2 py-0.2 rounded-full">${spec}</span>
                   <span class="text-[11px] font-mono ${hasPhone ? 'text-slate-600 font-bold' : 'text-slate-400 italic'}">${phoneDisplay}</span>
                 </div>
@@ -1663,6 +1679,10 @@ const app = {
           ((prevSig !== undefined && prevSig !== sig) || (hasAnySheetVal && !fbExisting))
         ) {
           const docId = this.leitoToDocId(rawLeito);
+          const nowIso = new Date().toISOString();
+          const prevAdmittedAt = (fbExisting && fbExisting.admitted_at && fbExisting.nome === entry.nome)
+            ? fbExisting.admitted_at
+            : (hasAnySheetVal ? nowIso : null);
           this.state.firestoreDb.collection('maternity_patients').doc(docId).set({
             leito: rawLeito,
             nome: entry.nome,
@@ -1670,8 +1690,9 @@ const app = {
             alto_risco: entry.alto_risco,
             internacao_por: entry.internacao_por,
             observacoes: entry.observacoes,
-            cleared_at: !hasAnySheetVal ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
+            admitted_at: prevAdmittedAt,
+            cleared_at: !hasAnySheetVal ? nowIso : null,
+            updated_at: nowIso,
             source: 'google_sheets'
           }, { merge: true }).catch(() => {});
         }
@@ -1681,11 +1702,15 @@ const app = {
       this.state.maternityExtraBeds = extraBeds;
       this.populateEvolutionLeitoSelect();
       this.renderMaternityView();
+      if (this.state.currentView === 'stats') {
+        const picker = document.getElementById('stats-month-picker');
+        this.renderPatientStats((picker && picker.value) ? picker.value : this.state.currentMonth);
+      }
 
       const statusEl = document.getElementById('maternity-sync-status');
       if (statusEl) {
         const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        statusEl.textContent = `Sincronizado em tempo real (Firebase + Google Docs às ${nowStr})`;
+        statusEl.textContent = `Sincronizado às ${nowStr}`;
       }
 
       if (showFeedback) {
@@ -1874,23 +1899,81 @@ const app = {
     const leito = document.getElementById('evo-select-leito').value;
     if (!leito) return;
 
+    const existing = this.getMaternityBedData(leito);
+    const key = this.normalizeLeitoKey(leito);
+    const fbExisting = this.state.maternityFirebaseMap[key];
+    const nowIso = new Date().toISOString();
+    const nomeVal = (document.getElementById('evo-input-nome').value || '').trim();
+    const parVal = (document.getElementById('evo-input-paridade').value || '').trim();
+    const riskVal = (document.getElementById('evo-input-altorisco').value || '').trim();
+    const intVal = (document.getElementById('evo-input-internacao').value || '').trim();
+    const obsVal = (document.getElementById('evo-input-observacoes').value || '').trim();
+
+    const samePatient = fbExisting && fbExisting.admitted_at &&
+      (!existing.nome || existing.nome.trim().toLowerCase() === nomeVal.toLowerCase());
+
     const payload = {
       leito,
-      nome: (document.getElementById('evo-input-nome').value || '').trim(),
-      paridade: (document.getElementById('evo-input-paridade').value || '').trim(),
-      alto_risco: (document.getElementById('evo-input-altorisco').value || '').trim(),
-      internacao_por: (document.getElementById('evo-input-internacao').value || '').trim(),
-      observacoes: (document.getElementById('evo-input-observacoes').value || '').trim(),
+      nome: nomeVal,
+      paridade: parVal,
+      alto_risco: riskVal,
+      internacao_por: intVal,
+      observacoes: obsVal,
+      admitted_at: samePatient ? fbExisting.admitted_at : nowIso,
       cleared_at: null,
-      updated_at: new Date().toISOString()
+      updated_at: nowIso
     };
 
+    await this.upsertMaternityAdmissionRecord(payload, false);
     await this.saveMaternityBedRecord(payload, 'Evolução salva com sucesso!');
+  },
+
+  requestClearMaternityBed() {
+    const select = document.getElementById('evo-select-leito');
+    const leito = select ? select.value : '';
+    if (!leito) return;
+
+    const badge = document.getElementById('discharge-confirm-bed-label');
+    const bedData = this.getMaternityBedData(leito);
+    if (badge) {
+      badge.textContent = bedData && bedData.nome
+        ? `Leito ${leito} • ${bedData.nome}`
+        : `Leito ${leito}`;
+    }
+
+    const modal = document.getElementById('modal-confirm-discharge');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeDischargeConfirmModal() {
+    const modal = document.getElementById('modal-confirm-discharge');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  async confirmClearMaternityBed() {
+    this.closeDischargeConfirmModal();
+    await this.clearMaternityBed();
   },
 
   async clearMaternityBed() {
     const leito = document.getElementById('evo-select-leito').value;
     if (!leito) return;
+
+    const currentBedData = this.getMaternityBedData(leito);
+    const key = this.normalizeLeitoKey(leito);
+    const fbExisting = this.state.maternityFirebaseMap[key];
+    const nowIso = new Date().toISOString();
+
+    if (currentBedData && (currentBedData.nome || currentBedData.internacao_por || currentBedData.observacoes)) {
+      await this.upsertMaternityAdmissionRecord({
+        ...currentBedData,
+        leito,
+        admitted_at: (fbExisting && fbExisting.admitted_at) ? fbExisting.admitted_at : null,
+        discharged_at: nowIso,
+        updated_at: nowIso
+      }, true);
+    }
 
     const payload = {
       leito,
@@ -1899,11 +1982,71 @@ const app = {
       alto_risco: '',
       internacao_por: '',
       observacoes: '',
-      cleared_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      admitted_at: null,
+      cleared_at: nowIso,
+      updated_at: nowIso
     };
 
-    await this.saveMaternityBedRecord(payload, `Leito ${leito} liberado!`);
+    await this.saveMaternityBedRecord(payload, `Alta confirmada — Leito ${leito} liberado!`);
+  },
+
+  async upsertMaternityAdmissionRecord(bedPayload, isDischarge = false) {
+    try {
+      const hasPatient = Boolean(bedPayload.nome || bedPayload.internacao_por || bedPayload.observacoes);
+      if (!hasPatient) return;
+
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const monthStr = this.state.currentMonth || nowIso.slice(0, 7);
+      const cleanName = (bedPayload.nome || bedPayload.internacao_por || 'paciente')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 24);
+      const recordId = `${monthStr}_${this.leitoToDocId(bedPayload.leito)}_${cleanName}`;
+
+      const existingIdx = this.state.maternityAdmissions.findIndex(r => r.id === recordId);
+      const prevRec = existingIdx >= 0 ? this.state.maternityAdmissions[existingIdx] : null;
+
+      const admittedAt = (prevRec && prevRec.admitted_at) || bedPayload.admitted_at || nowIso;
+      const dischargedAt = isDischarge ? (bedPayload.discharged_at || nowIso) : ((prevRec && prevRec.discharged_at) || null);
+
+      let stayHours = prevRec && prevRec.stay_hours ? prevRec.stay_hours : null;
+      if (admittedAt && dischargedAt) {
+        const diffMs = Math.max(0, new Date(dischargedAt).getTime() - new Date(admittedAt).getTime());
+        stayHours = Math.max(1, Math.round((diffMs / 3600000) * 10) / 10);
+      }
+
+      const record = {
+        id: recordId,
+        month: monthStr,
+        leito: bedPayload.leito,
+        nome: bedPayload.nome || '',
+        paridade: bedPayload.paridade || '',
+        alto_risco: bedPayload.alto_risco || '',
+        internacao_por: bedPayload.internacao_por || '',
+        observacoes: bedPayload.observacoes || '',
+        admitted_at: admittedAt,
+        discharged_at: dischargedAt,
+        stay_hours: stayHours,
+        status: isDischarge ? 'discharged' : 'active',
+        updated_at: nowIso
+      };
+
+      if (existingIdx >= 0) {
+        this.state.maternityAdmissions[existingIdx] = record;
+      } else {
+        this.state.maternityAdmissions.push(record);
+      }
+
+      try {
+        localStorage.setItem('maternity_admissions_cache', JSON.stringify(this.state.maternityAdmissions));
+      } catch (e) {}
+
+      if (this.state.firebaseActive && this.state.firestoreDb) {
+        await this.state.firestoreDb.collection('maternity_admissions').doc(recordId).set(record, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Aviso ao registrar histórico mensal da maternidade:', e);
+    }
   },
 
   async saveMaternityBedRecord(payload, successMsg) {
@@ -1911,6 +2054,10 @@ const app = {
     this.state.maternityFirebaseMap[key] = { ...payload };
     this.renderMaternityView();
     this.populateEvolutionLeitoSelect(payload.leito);
+    if (this.state.currentView === 'stats') {
+      const picker = document.getElementById('stats-month-picker');
+      this.renderPatientStats((picker && picker.value) ? picker.value : this.state.currentMonth);
+    }
 
     try {
       if (this.state.firebaseActive && this.state.firestoreDb) {
@@ -2077,7 +2224,38 @@ const app = {
     this.renderDoctorsCatalog();
   },
 
-  // ================= 4. RENDER: FECHAMENTO DE HORAS =================
+  // ================= 4. RENDER: FECHAMENTO DE HORAS & INDICADORES =================
+  toggleStatsSection(section) {
+    if (!this.state.statsCollapsed) {
+      this.state.statsCollapsed = { professionals: false, patients: false };
+    }
+    const nextState = !this.state.statsCollapsed[section];
+    this.state.statsCollapsed[section] = nextState;
+
+    const bodyEl = document.getElementById(`body-stats-${section}`);
+    const chevronEl = document.getElementById(`chevron-stats-${section}`);
+    const btnEl = document.getElementById(`btn-collapse-${section}`);
+
+    if (bodyEl) {
+      bodyEl.classList.toggle('hidden', nextState);
+    }
+    if (chevronEl) {
+      chevronEl.style.transform = nextState ? 'rotate(-90deg)' : 'rotate(0deg)';
+    }
+    if (btnEl) {
+      btnEl.setAttribute('aria-expanded', String(!nextState));
+    }
+
+    if (!nextState && section === 'professionals') {
+      requestAnimationFrame(() => {
+        const statsViewport = document.getElementById('stats-scroll-viewport');
+        if (statsViewport) {
+          this.updateScrollProgressBar(statsViewport, 'stats-scroll-bar', 'stats-scroll-pct');
+        }
+      });
+    }
+  },
+
   async loadStats(monthStr) {
     try {
       const stats = this.state.doctors.map(doc => {
@@ -2127,6 +2305,8 @@ const app = {
         }).join('');
       }
 
+      this.renderPatientStats(monthStr);
+
       requestAnimationFrame(() => {
         const statsViewport = document.getElementById('stats-scroll-viewport');
         if (statsViewport) {
@@ -2136,6 +2316,487 @@ const app = {
     } catch (e) {
       console.error('Erro ao calcular estatísticas:', e);
     }
+  },
+
+  estimateStayHoursFromRecord(rec) {
+    if (rec.stay_hours && Number(rec.stay_hours) > 0) {
+      return Number(rec.stay_hours);
+    }
+
+    const text = `${rec.internacao_por || ''} ${rec.observacoes || ''}`.toUpperCase();
+
+    // Detecta padrões clínicos como "2º DIH", "D2", "3 DPO", "48H", "24H"
+    const dihMatch = text.match(/(\d+)\s*(?:º|O|°)?\s*(?:DIH|DPO|DIA|DIAS)\b/) || text.match(/\bD(\d)\b/);
+    if (dihMatch && Number(dihMatch[1]) > 0 && Number(dihMatch[1]) <= 30) {
+      return Number(dihMatch[1]) * 24;
+    }
+    const hoursMatch = text.match(/\b(\d{1,3})\s*H(?:ORAS|S)?\b/);
+    if (hoursMatch && Number(hoursMatch[1]) >= 2 && Number(hoursMatch[1]) <= 240) {
+      return Number(hoursMatch[1]);
+    }
+
+    if (rec.admitted_at) {
+      const startMs = new Date(rec.admitted_at).getTime();
+      const endMs = rec.discharged_at ? new Date(rec.discharged_at).getTime() : Date.now();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+        const diffH = (endMs - startMs) / 3600000;
+        if (diffH >= 1) return Math.round(diffH * 10) / 10;
+      }
+    }
+
+    // Estimativa clínica padrão por setor/motivo quando já constava na planilha sem carimbo de hora
+    const leitoUpper = String(rec.leito || '').toUpperCase();
+    if (leitoUpper.startsWith('PRÉ') || leitoUpper.startsWith('OBS')) return 14;
+    if (text.includes('CESAREA') || text.includes('CESÁREA') || text.includes('PC')) return 48;
+    if (text.includes('PARTO NORMAL') || text.includes('PN')) return 36;
+    return 38;
+  },
+
+  renderPatientStats(monthStr) {
+    const container = document.getElementById('stats-patients-content');
+    if (!container) return;
+
+    const groups = this.getAllMaternityGroups();
+    let totalBeds = 0;
+    let occupiedBeds = 0;
+
+    const sectorStats = groups.map(g => ({
+      title: g.title,
+      total: g.beds.length,
+      occupied: 0
+    }));
+
+    const patientRecordsMap = new Map();
+
+    // 1. Coleta pacientes atualmente internadas na tabela
+    groups.forEach((group, gIdx) => {
+      group.beds.forEach(leito => {
+        totalBeds++;
+        const data = this.getMaternityBedData(leito);
+        const fbData = this.state.maternityFirebaseMap[this.normalizeLeitoKey(leito)] || {};
+        const isOccupied = Boolean(
+          (data.nome && data.nome.trim() !== '') ||
+          (data.internacao_por && data.internacao_por.trim() !== '') ||
+          (data.observacoes && data.observacoes.trim() !== '')
+        );
+        if (isOccupied) {
+          occupiedBeds++;
+          sectorStats[gIdx].occupied++;
+          const key = `${this.normalizeLeitoKey(leito)}_${(data.nome || data.internacao_por || 'PACIENTE').trim().toUpperCase()}`;
+          patientRecordsMap.set(key, {
+            leito,
+            nome: (data.nome || '').trim(),
+            paridade: (data.paridade || '').trim(),
+            alto_risco: (data.alto_risco || '').trim(),
+            internacao_por: (data.internacao_por || '').trim(),
+            observacoes: (data.observacoes || '').trim(),
+            admitted_at: fbData.admitted_at || null,
+            discharged_at: null,
+            stay_hours: null,
+            status: 'active'
+          });
+        }
+      });
+    });
+
+    // 2. Soma o histórico mensal de internações e altas do mês selecionado
+    const targetMonth = monthStr || this.state.currentMonth;
+    (this.state.maternityAdmissions || []).forEach(adm => {
+      if (!adm) return;
+      const admMonth = adm.month || (adm.admitted_at ? String(adm.admitted_at).slice(0, 7) : targetMonth);
+      if (admMonth !== targetMonth) return;
+
+      const key = `${this.normalizeLeitoKey(adm.leito)}_${(adm.nome || adm.internacao_por || 'PACIENTE').trim().toUpperCase()}`;
+      if (!patientRecordsMap.has(key)) {
+        patientRecordsMap.set(key, adm);
+      } else {
+        const existing = patientRecordsMap.get(key);
+        patientRecordsMap.set(key, {
+          ...adm,
+          ...existing,
+          admitted_at: existing.admitted_at || adm.admitted_at,
+          stay_hours: existing.stay_hours || adm.stay_hours
+        });
+      }
+    });
+
+    const allPatients = Array.from(patientRecordsMap.values());
+    const totalAttended = allPatients.length;
+    const dischargedCount = allPatients.filter(p => p.status === 'discharged' || p.discharged_at).length;
+    const occupancyPct = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+
+    // 3. Tempo médio de internação
+    let totalStayHours = 0;
+    allPatients.forEach(p => {
+      totalStayHours += this.estimateStayHoursFromRecord(p);
+    });
+    const avgStayHours = totalAttended > 0 ? Math.round(totalStayHours / totalAttended) : 0;
+    const avgStayDays = totalAttended > 0 ? (totalStayHours / totalAttended / 24).toFixed(1).replace('.', ',') : '0,0';
+
+    // 4. Classificação de Alto Risco e tipos mais relevantes
+    let highRiskPatientsCount = 0;
+    let habitualRiskPatientsCount = 0;
+    const riskTypeCounts = {};
+
+    const normalizeRiskLabel = (rawToken) => {
+      const t = rawToken.trim().toUpperCase();
+      if (!t) return null;
+      if (['NÃO', 'NAO', 'N', '-', 'BAIXO', 'HABITUAL', 'RISCO HABITUAL', 'S/N', 'NENHUM', 'NEGATIVO'].includes(t)) {
+        return null;
+      }
+      if (t.includes('DMG') || t.includes('DIABETES')) return 'Diabetes Gestacional (DMG / DM)';
+      if (t.includes('HAC') || t.includes('HIPERTENS')) return 'Hipertensão Arterial (HAC)';
+      if (t.includes('DHEG') || t.includes('ECLÂMPSIA') || t.includes('ECLAMPSIA') || t.includes('PE ') || t === 'PE' || t.includes('PRÉ-ECL')) return 'Pré-Eclâmpsia / DHEG';
+      if (t.includes('HIPOTIREOID')) return 'Hipotireoidismo';
+      if (t.includes('OBESIDADE') || t.includes('IMC')) return 'Obesidade';
+      if (t.includes('TPP') || t.includes('PREMATUR') || t.includes('IIC')) return 'Trabalho de Parto Prematuro / IIC';
+      if (t.includes('ITERATIV') || t.includes('2 PC') || t.includes('3 PC')) return 'Iteratividade (Cesáreas Prévias)';
+      if (t.includes('GEMELAR')) return 'Gestação Gemelar';
+      if (t.includes('ITU') || t.includes('INFEC')) return 'Infecção do Trato Urinário (ITU)';
+      if (t.includes('CIUR') || t.includes('RCIU') || t.includes('RESTRI')) return 'Restrição de Crescimento Fetal (RCIU)';
+      if (t.includes('OLIGODR') || t.includes('POLIDR') || t.includes('ILA')) return 'Alteração de Líquido Amniótico';
+      if (t.includes('IDADE') || t.includes('35 ANOS') || t.includes('40 ANOS')) return 'Idade Materna Avançada';
+      if (t.includes('TROMBO') || t.includes('SAF') || t.includes('SAAF')) return 'Trombofilia / SAF';
+      if (t === 'SIM' || t === 'S' || t === 'ALTO RISCO') return 'Alto Risco Obstétrico (Geral)';
+      return rawToken.trim().charAt(0).toUpperCase() + rawToken.trim().slice(1).toLowerCase();
+    };
+
+    allPatients.forEach(p => {
+      const rawRisk = (p.alto_risco || '').trim();
+      const tokens = rawRisk.split(/[,;/+\n]+/).map(s => s.trim()).filter(Boolean);
+      const matchedLabels = new Set();
+
+      tokens.forEach(tok => {
+        const label = normalizeRiskLabel(tok);
+        if (label) matchedLabels.add(label);
+      });
+
+      if (matchedLabels.size > 0) {
+        highRiskPatientsCount++;
+        matchedLabels.forEach(lbl => {
+          riskTypeCounts[lbl] = (riskTypeCounts[lbl] || 0) + 1;
+        });
+      } else {
+        habitualRiskPatientsCount++;
+      }
+    });
+
+    const highRiskPct = totalAttended > 0 ? Math.round((highRiskPatientsCount / totalAttended) * 100) : 0;
+    const sortedRiskTypes = Object.entries(riskTypeCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+
+    // 5. Dados de Paridade (Gestações, Partos, Cesáreas, Abortos)
+    const parityStats = {
+      primigestas: 0,     // G1
+      secundigestas: 0,   // G2
+      multiparas: 0,      // G3+
+      nuliparas: 0,       // P0
+      comPartosPrevios: 0,// P1+
+      cesareaPrevia: 0,   // C1+ / PC
+      abortoPrevio: 0,    // A1+
+      naoInformado: 0
+    };
+
+    allPatients.forEach(p => {
+      const rawP = (p.paridade || '').trim().toUpperCase();
+      if (!rawP || rawP === '-' || rawP === '—') {
+        parityStats.naoInformado++;
+        return;
+      }
+
+      // Gestações (G1, G2, G3, I G, II G, PRIMIGESTA, MULTÍPARA)
+      const gMatch = rawP.match(/\bG\s*(\d+)/) || rawP.match(/(\d+)\s*G\b/);
+      if (gMatch) {
+        const gNum = parseInt(gMatch[1], 10);
+        if (gNum === 1) parityStats.primigestas++;
+        else if (gNum === 2) parityStats.secundigestas++;
+        else if (gNum >= 3) parityStats.multiparas++;
+      } else if (rawP.includes('PRIMI')) {
+        parityStats.primigestas++;
+      } else if (rawP.includes('SECUNDI')) {
+        parityStats.secundigestas++;
+      } else if (rawP.includes('MULTI') || rawP.includes('MULTÍ')) {
+        parityStats.multiparas++;
+      }
+
+      // Partos (P0, P1, PN, PC)
+      const pMatch = rawP.match(/\bP\s*(\d+)/);
+      if (pMatch) {
+        const pNum = parseInt(pMatch[1], 10);
+        if (pNum === 0) parityStats.nuliparas++;
+        else if (pNum >= 1) parityStats.comPartosPrevios++;
+      } else if (rawP.includes('NULÍ') || rawP.includes('NULI') || (rawP.includes('G1') && !rawP.includes('P1'))) {
+        parityStats.nuliparas++;
+      }
+
+      // Cesáreas prévias (C1, C2, PC1, 1PC)
+      const cMatch = rawP.match(/\b(?:PC|C)\s*(\d+)/) || rawP.match(/(\d+)\s*(?:PC|CES)/);
+      if ((cMatch && parseInt(cMatch[1], 10) >= 1) || rawP.includes('CESÁREA') || rawP.includes('CESAREA')) {
+        parityStats.cesareaPrevia++;
+      }
+
+      // Abortos prévios (A1, A2, 1A)
+      const aMatch = rawP.match(/\bA\s*(\d+)/);
+      if (aMatch && parseInt(aMatch[1], 10) >= 1) {
+        parityStats.abortoPrevio++;
+      }
+    });
+
+    // 6. Principais Motivos de Internação
+    const admissionReasons = {};
+    const normalizeReason = (rawReason, rawObs) => {
+      const combined = `${rawReason || ''} ${rawObs || ''}`.toUpperCase();
+      const r = (rawReason || '').trim();
+      if (!r && !rawObs) return null;
+      const rUp = r.toUpperCase();
+
+      if (rUp.includes('CESÁREA') || rUp.includes('CESAREA') || rUp.includes('PÓS CES') || rUp.includes('POS CES') || rUp === 'PC') {
+        return 'Cesárea / Pós-Operatório de Cesárea';
+      }
+      if (rUp.includes('PARTO NORMAL') || rUp.includes('PN') || rUp.includes('PÓS PARTO') || rUp.includes('POS PARTO') || rUp.includes('PUERP')) {
+        return 'Parto Normal / Puerpério Imediato';
+      }
+      if (rUp.includes('TP') || rUp.includes('TRABALHO DE PARTO') || rUp.includes('INDUÇÃO') || rUp.includes('INDUCAO') || rUp.includes('PRÓDROMO') || rUp.includes('PRODROMO')) {
+        return 'Trabalho de Parto / Indução';
+      }
+      if (rUp.includes('BOLSA ROTA') || rUp.includes('RPMO') || rUp.includes('AMNIORREXE')) {
+        return 'Bolsa Rota / Amniorrexe (RPMO)';
+      }
+      if (rUp.includes('CONTROLE PA') || rUp.includes('PRESS') || rUp.includes('DHEG') || rUp.includes('PE') || rUp.includes('HAC')) {
+        return 'Investigação / Controle Pressórico';
+      }
+      if (rUp.includes('PERFIL') || rUp.includes('GLIC') || rUp.includes('DMG')) {
+        return 'Controle Glicêmico / Perfil Obstétrico';
+      }
+      if (rUp.includes('ABORTO') || rUp.includes('ABORTAMENTO') || rUp.includes('CTG') || rUp.includes('CURETAGEM') || rUp.includes('AMIU')) {
+        return 'Abortamento / Curetagem / AMIU';
+      }
+      if (rUp.includes('ITU') || rUp.includes('PIELONEFRITE')) {
+        return 'Tratamento Clínico / ITU na Gestação';
+      }
+      if (r) {
+        return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
+      }
+      if (combined.includes('PUERP') || combined.includes('RN')) {
+        return 'Alojamento Conjunto / Puerpério';
+      }
+      return 'Avaliação / Observação Obstétrica';
+    };
+
+    allPatients.forEach(p => {
+      const reasonLabel = normalizeReason(p.internacao_por, p.observacoes);
+      if (reasonLabel) {
+        admissionReasons[reasonLabel] = (admissionReasons[reasonLabel] || 0) + 1;
+      }
+    });
+
+    const sortedReasons = Object.entries(admissionReasons)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+
+    container.innerHTML = `
+      <!-- LINHA 1: 4 CARDS DE KPI HOSPITALAR -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Pacientes Atendidas</span>
+            <div class="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+              <i data-lucide="users" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2">
+            <div class="text-2xl sm:text-3xl font-extrabold text-brand-950 leading-none">${totalAttended}</div>
+            <p class="text-[11px] font-bold text-slate-600 mt-1.5">
+              <span class="text-emerald-700 font-extrabold">${occupiedBeds} internadas</span> • ${dischargedCount} altas no mês
+            </p>
+          </div>
+        </div>
+
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Tempo Médio Internação</span>
+            <div class="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+              <i data-lucide="clock" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2">
+            <div class="text-2xl sm:text-3xl font-extrabold text-brand-950 leading-none">
+              ${avgStayDays} <span class="text-sm font-bold text-slate-600">dias</span>
+            </div>
+            <p class="text-[11px] font-bold text-slate-600 mt-1.5">
+              Média de <span class="text-brand-800 font-extrabold">${avgStayHours}h</span> de permanência hospitalar
+            </p>
+          </div>
+        </div>
+
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Gestantes Alto Risco</span>
+            <div class="w-8 h-8 rounded-xl bg-scred-100 text-scred-700 flex items-center justify-center shrink-0">
+              <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2">
+            <div class="text-2xl sm:text-3xl font-extrabold text-scred-700 leading-none">
+              ${highRiskPatientsCount} <span class="text-sm font-bold text-slate-600">(${highRiskPct}%)</span>
+            </div>
+            <p class="text-[11px] font-bold text-slate-600 mt-1.5">
+              ${habitualRiskPatientsCount} de risco habitual (${totalAttended > 0 ? (100 - highRiskPct) : 0}%)
+            </p>
+          </div>
+        </div>
+
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Taxa de Ocupação Atual</span>
+            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <i data-lucide="bed" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="mt-2">
+            <div class="text-2xl sm:text-3xl font-extrabold text-brand-950 leading-none">
+              ${occupancyPct}% <span class="text-xs font-bold text-slate-500">(${occupiedBeds}/${totalBeds})</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden mt-2">
+              <div class="h-full rounded-full bg-emerald-600 transition-all" style="width: ${Math.min(100, occupancyPct)}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LINHA 2: 3 BLOCOS ANALÍTICOS (ALTO RISCO, PARIDADE, MOTIVOS DE INTERNAÇÃO & SETORES) -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- 1. TIPOS DE ALTO RISCO MAIS RELEVANTES -->
+        <div class="rounded-2xl border border-m3-outlineVariant/60 bg-white p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <i data-lucide="heart-pulse" class="w-4 h-4 text-scred-600"></i>
+              <h5 class="font-extrabold text-brand-950 text-xs sm:text-sm uppercase tracking-wide">Tipos de Alto Risco Mais Relevantes</h5>
+            </div>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-scred-50 text-scred-800 border border-scred-200">
+              ${highRiskPatientsCount} casos
+            </span>
+          </div>
+
+          ${sortedRiskTypes.length > 0 ? `
+            <div class="space-y-2.5">
+              ${sortedRiskTypes.map(([label, count]) => {
+                const pct = highRiskPatientsCount > 0 ? Math.round((count / highRiskPatientsCount) * 100) : 0;
+                return `
+                  <div>
+                    <div class="flex items-center justify-between text-xs mb-1 gap-2">
+                      <span class="font-bold text-slate-800 truncate">${this.escapeHtml(label)}</span>
+                      <span class="font-extrabold text-scred-700 shrink-0">${count} pac. (${pct}%)</span>
+                    </div>
+                    <div class="w-full h-2 rounded-full bg-scred-50 overflow-hidden">
+                      <div class="h-full rounded-full bg-scred-600" style="width: ${Math.max(8, pct)}%"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <div class="py-6 text-center text-xs text-slate-400 font-semibold">
+              Nenhuma condição de alto risco registrada nos leitos atuais.
+            </div>
+          `}
+        </div>
+
+        <!-- 2. PERFIL OBSTÉTRICO E DADOS DE PARIDADE -->
+        <div class="rounded-2xl border border-m3-outlineVariant/60 bg-white p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <i data-lucide="baby" class="w-4 h-4 text-brand-700"></i>
+              <h5 class="font-extrabold text-brand-950 text-xs sm:text-sm uppercase tracking-wide">Dados de Paridade</h5>
+            </div>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
+              Perfil G / P / C / A
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="p-2.5 rounded-xl bg-m3-containerLow border border-m3-outlineVariant/40">
+              <span class="text-[10px] font-bold uppercase text-slate-500 block">Primigestas (G1)</span>
+              <span class="text-lg font-extrabold text-brand-950">${parityStats.primigestas}</span>
+              <span class="text-[10px] font-semibold text-slate-500 ml-1">(${totalAttended > 0 ? Math.round((parityStats.primigestas / totalAttended) * 100) : 0}%)</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-m3-containerLow border border-m3-outlineVariant/40">
+              <span class="text-[10px] font-bold uppercase text-slate-500 block">Secundigestas (G2)</span>
+              <span class="text-lg font-extrabold text-brand-950">${parityStats.secundigestas}</span>
+              <span class="text-[10px] font-semibold text-slate-500 ml-1">(${totalAttended > 0 ? Math.round((parityStats.secundigestas / totalAttended) * 100) : 0}%)</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-m3-containerLow border border-m3-outlineVariant/40">
+              <span class="text-[10px] font-bold uppercase text-slate-500 block">Multíparas (G3+)</span>
+              <span class="text-lg font-extrabold text-brand-950">${parityStats.multiparas}</span>
+              <span class="text-[10px] font-semibold text-slate-500 ml-1">(${totalAttended > 0 ? Math.round((parityStats.multiparas / totalAttended) * 100) : 0}%)</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-m3-containerLow border border-m3-outlineVariant/40">
+              <span class="text-[10px] font-bold uppercase text-slate-500 block">Nulíparas (P0)</span>
+              <span class="text-lg font-extrabold text-brand-950">${parityStats.nuliparas}</span>
+              <span class="text-[10px] font-semibold text-slate-500 ml-1">(${totalAttended > 0 ? Math.round((parityStats.nuliparas / totalAttended) * 100) : 0}%)</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70">
+              <span class="text-[10px] font-bold uppercase text-amber-900 block">Cesárea Prévia (C1+)</span>
+              <span class="text-lg font-extrabold text-amber-950">${parityStats.cesareaPrevia}</span>
+              <span class="text-[10px] font-semibold text-amber-800 ml-1">pacientes</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-[10px] font-bold uppercase text-slate-600 block">Aborto Prévio (A1+)</span>
+              <span class="text-lg font-extrabold text-slate-800">${parityStats.abortoPrevio}</span>
+              <span class="text-[10px] font-semibold text-slate-500 ml-1">pacientes</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. PRINCIPAIS MOTIVOS DE INTERNAÇÃO & OCUPAÇÃO POR ALA -->
+        <div class="rounded-2xl border border-m3-outlineVariant/60 bg-white p-4 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <i data-lucide="clipboard-list" class="w-4 h-4 text-emerald-700"></i>
+                <h5 class="font-extrabold text-brand-950 text-xs sm:text-sm uppercase tracking-wide">Motivos de Internação</h5>
+              </div>
+              <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                Desfechos
+              </span>
+            </div>
+
+            ${sortedReasons.length > 0 ? `
+              <div class="space-y-2 mb-4">
+                ${sortedReasons.map(([reason, count]) => {
+                  const pct = totalAttended > 0 ? Math.round((count / totalAttended) * 100) : 0;
+                  return `
+                    <div class="flex items-center justify-between text-xs py-1 border-b border-m3-outlineVariant/30 last:border-b-0 gap-2">
+                      <span class="font-bold text-slate-700 truncate">${this.escapeHtml(reason)}</span>
+                      <span class="font-extrabold text-brand-950 bg-m3-container px-2 py-0.5 rounded-full text-[11px] shrink-0">${count} (${pct}%)</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : `
+              <div class="py-4 text-center text-xs text-slate-400 font-semibold">
+                Sem motivos de internação registrados.
+              </div>
+            `}
+          </div>
+
+          <div class="pt-2 border-t border-m3-outlineVariant/50">
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block mb-1.5">Ocupação por Ala da Maternidade</span>
+            <div class="grid grid-cols-2 gap-1.5">
+              ${sectorStats.map(sec => `
+                <div class="px-2.5 py-1.5 rounded-xl bg-m3-containerLow flex items-center justify-between text-[11px]">
+                  <span class="font-bold text-slate-700 truncate mr-1.5">${this.escapeHtml(sec.title.split('(')[0].trim())}</span>
+                  <span class="font-extrabold text-brand-900 shrink-0">${sec.occupied}/${sec.total}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (window.lucide) lucide.createIcons();
   },
 
   exportStatsCSV() {

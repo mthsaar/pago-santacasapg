@@ -12,12 +12,14 @@
   <meta http-equiv="Expires" content="0">
   <title>Santa Casa PG - Escala</title>
   
-  <!-- Favicon & App Icons (Santa Casa de Ponta Grossa) -->
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=11">
-  <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=11">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=11">
-  <link rel="manifest" href="/manifest.json?v=11">
-  <link rel="stylesheet" href="/styles.css?v=13">
+  <!-- Favicon & App Icons (Santa Casa de Ponta Grossa - Maternidade) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=14">
+  <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=14">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
+  <link rel="manifest" href="/manifest.json?v=14">
+  <link rel="stylesheet" href="/styles.css?v=14">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -105,8 +107,8 @@
         
         <!-- Logo Oficial Santa Casa PG e Identificação (Sem badge de nuvem) -->
         <div class="flex items-center gap-3.5">
-          <div class="w-12 h-12 rounded-2xl bg-white p-1 border border-m3-outlineVariant/60 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-            <img src="/logo.png?v=4" alt="Santa Casa de Ponta Grossa" class="w-full h-full object-contain">
+          <div class="w-12 h-12 rounded-2xl bg-white border border-m3-outlineVariant/60 shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+            <img src="/logo-header.png?v=14" srcset="/icon-192.png?v=14 2x, /logo-header.png?v=14 3x, /icon-512.png?v=14 4x" alt="Santa Casa de Ponta Grossa" class="crisp-app-logo w-full h-full object-cover">
           </div>
           <div>
             <h1 id="header-hospital-name" class="font-extrabold text-brand-950 text-lg tracking-tight leading-tight">
@@ -189,13 +191,19 @@
   <!-- ================= CONTEÚDO PRINCIPAL ================= -->
   <main class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 pt-2.5 pb-6 md:py-6 flex-1 w-full">
 
-    <!-- Cabeçalho Mobile Compacto: Ícone e Título maiores na mesma linha do Switch Consulta / Editor -->
+    <!-- Cabeçalho Mobile Compacto Ultra-Nítido Retina (3x iPhone 16) -->
     <div id="mobile-mode-bar" class="md:hidden mb-3 flex items-center justify-between gap-2 px-1">
       <div class="flex items-center gap-2.5 min-w-0">
-        <img src="/logo.png?v=11" alt="Santa Casa PG" class="w-10 h-10 rounded-2xl object-contain bg-white p-1 border border-m3-outlineVariant/60 shrink-0 shadow-sm">
-        <div class="text-left leading-tight min-w-0">
-          <h1 class="text-sm font-extrabold text-brand-950 tracking-tight truncate">Santa Casa de Ponta Grossa</h1>
-          <p class="text-[11px] font-semibold text-brand-700 truncate">Maternidade • Escala de Plantão</p>
+        <div class="w-11 h-11 rounded-2xl overflow-hidden bg-white border border-m3-outlineVariant/70 shrink-0 shadow-xs flex items-center justify-center">
+          <img src="/logo-header.png?v=14"
+               srcset="/icon-192.png?v=14 2x, /logo-header.png?v=14 3x, /icon-512.png?v=14 4x"
+               width="44" height="44"
+               alt="Santa Casa PG"
+               class="crisp-app-logo w-full h-full object-cover">
+        </div>
+        <div class="text-left min-w-0">
+          <h1 class="text-[15px] font-extrabold text-[#000865] leading-snug">Santa Casa de Ponta Grossa</h1>
+          <p class="text-xs font-bold text-[#23298B] leading-tight">Maternidade • Escala de Plantão</p>
         </div>
       </div>
 
@@ -222,50 +230,32 @@
     <!-- ================= 1. ABA: ESCALA (SOMENTE MODO SEMANAL + PLANTÃO AGORA ABAIXO) ================= -->
     <section id="view-spreadsheet" class="view-section space-y-3">
 
-      <!-- Barra de Controle da Escala (Sem quadrado "Escala" antes do mês e sem modo "Dia") -->
-      <div class="m3-card px-3.5 py-2.5 sm:px-5 sm:py-3.5 flex flex-col gap-2.5">
-        <div class="flex flex-wrap items-center justify-between gap-2">
+      <!-- Barra de Controle da Escala (Sem subtítulo de semana redundante) -->
+      <div class="m3-card px-3.5 py-2.5 sm:px-5 sm:py-3 flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2">
           
           <!-- Nome do Mês e Setas de Mês -->
-          <div class="flex items-center gap-2 sm:gap-3">
-            <div class="flex items-center gap-1">
-              <button onclick="app.prevMonth()" title="Mês anterior" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
-                <i data-lucide="chevron-left" class="w-5 h-5"></i>
-              </button>
-              <div class="text-left px-1">
-                <div class="flex items-center gap-2">
-                  <h2 id="calendar-month-title" class="text-base sm:text-xl font-extrabold tracking-tight text-brand-950 capitalize leading-tight">
-                    Novembro 2026
-                  </h2>
-                </div>
-                <p id="calendar-week-subtitle" class="text-[11px] text-brand-700 font-semibold leading-none mt-1">
-                  Deslize para navegar entre as semanas
-                </p>
-              </div>
-              <button onclick="app.nextMonth()" title="Próximo mês" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
-                <i data-lucide="chevron-right" class="w-5 h-5"></i>
-              </button>
+          <div class="flex items-center gap-1">
+            <button onclick="app.prevMonth()" title="Mês anterior" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+              <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <div class="text-left px-1">
+              <h2 id="calendar-month-title" class="text-base sm:text-xl font-extrabold tracking-tight text-brand-950 capitalize leading-tight">
+                Novembro 2026
+              </h2>
             </div>
+            <button onclick="app.nextMonth()" title="Próximo mês" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+              <i data-lucide="chevron-right" class="w-5 h-5"></i>
+            </button>
           </div>
 
-          <!-- Botão Hoje (texto visível também no mobile) + Setas de Semana -->
-          <div class="flex items-center gap-1.5 sm:gap-2 ml-auto">
+          <!-- Botão Hoje (texto visível também no mobile) -->
+          <div class="flex items-center gap-1.5 ml-auto">
             <button onclick="app.handleTodayClick()" title="Ir para hoje"
                     class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-100 hover:bg-brand-200 text-brand-950 text-xs font-extrabold transition">
               <i data-lucide="calendar-check-2" class="w-3.5 h-3.5 text-brand-700"></i>
               <span>Hoje</span>
             </button>
-
-            <div class="flex items-center bg-m3-container rounded-full p-0.5">
-              <button onclick="app.prevWeek()" title="Semana anterior"
-                      class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
-                <i data-lucide="arrow-left" class="w-4 h-4"></i>
-              </button>
-              <button onclick="app.nextWeek()" title="Próxima semana"
-                      class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
-                <i data-lucide="arrow-right" class="w-4 h-4"></i>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -291,40 +281,54 @@
         </div>
       </div>
 
-      <!-- Barra acima da tabela da escala: Desfazer/Avançar (Modo Editor) + Baixar Planilha do Mês Todo (Todos os modos) -->
-      <div id="escala-toolbar-above-table" class="m3-card px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 bg-white">
-        <!-- Grupo Desfazer / Avançar (Exibido APENAS no Modo Editor) -->
-        <div id="editor-undo-redo-bar" class="hidden flex items-center gap-1.5">
-          <button type="button" id="btn-undo-shift" onclick="app.requestUndoShiftAction()" disabled
-                  title="Desfazer última alteração na escala (Ctrl+Z)"
-                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
-            <i data-lucide="undo-2" class="w-3.5 h-3.5 text-brand-700"></i>
-            <span>Desfazer</span>
-          </button>
-          <button type="button" id="btn-redo-shift" onclick="app.redoShiftAction()" disabled
-                  title="Avançar / refazer alteração na escala (Ctrl+Y)"
-                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
-            <i data-lucide="redo-2" class="w-3.5 h-3.5 text-brand-700"></i>
-            <span>Avançar</span>
-          </button>
-          <span id="undo-redo-status-text" class="hidden sm:inline-block text-[11px] font-semibold text-slate-500 ml-1 truncate max-w-[200px]"></span>
+      <!-- Barra acima da tabela da escala: Setas de Navegação + Desfazer/Avançar (Modo Editor) + Baixar Mês (NA MESMA LINHA) -->
+      <div id="escala-toolbar-above-table" class="m3-card px-3 py-2 flex items-center justify-between gap-1.5 bg-white overflow-x-auto scrollbar-none">
+        <div class="flex items-center gap-1.5 shrink-0">
+          <!-- Setas de Navegação na mesma linha dos botões de Baixar Mês -->
+          <div class="flex items-center bg-m3-container rounded-full p-0.5 shrink-0">
+            <button type="button" onclick="app.prevWeek()" title="Semana anterior"
+                    class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
+              <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            </button>
+            <button type="button" onclick="app.nextWeek()" title="Próxima semana"
+                    class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <!-- Grupo Desfazer / Avançar (Exibido APENAS no Modo Editor) -->
+          <div id="editor-undo-redo-bar" class="hidden flex items-center gap-1 shrink-0">
+            <button type="button" id="btn-undo-shift" onclick="app.requestUndoShiftAction()" disabled
+                    title="Desfazer última alteração na escala (Ctrl+Z)"
+                    class="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
+              <i data-lucide="undo-2" class="w-3.5 h-3.5 text-brand-700"></i>
+              <span>Desfazer</span>
+            </button>
+            <button type="button" id="btn-redo-shift" onclick="app.redoShiftAction()" disabled
+                    title="Avançar / refazer alteração na escala (Ctrl+Y)"
+                    class="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
+              <i data-lucide="redo-2" class="w-3.5 h-3.5 text-brand-700"></i>
+              <span>Avançar</span>
+            </button>
+            <span id="undo-redo-status-text" class="hidden lg:inline-block text-[11px] font-semibold text-slate-500 ml-1 truncate max-w-[180px]"></span>
+          </div>
         </div>
 
-        <!-- Opção de Baixar a Planilha do Mês Todo em PDF ou XLSX (Visível em TODOS os modos) -->
-        <div class="flex items-center gap-1.5 ml-auto">
-          <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1 mr-0.5">
+        <!-- Opção de Baixar a Planilha do Mês Todo em PDF ou XLSX (Na mesma linha) -->
+        <div class="flex items-center gap-1 sm:gap-1.5 ml-auto shrink-0">
+          <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
             <i data-lucide="download" class="w-3.5 h-3.5 text-brand-700"></i>
             <span>Baixar mês:</span>
           </span>
           <button type="button" onclick="app.exportFullMonthPDF()"
                   title="Baixar planilha da escala do mês inteiro em formato PDF"
-                  class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-extrabold bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 transition shadow-2xs">
+                  class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-extrabold bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 transition shadow-2xs">
             <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
             <span>PDF</span>
           </button>
           <button type="button" onclick="app.exportFullMonthXLSX()"
                   title="Baixar planilha da escala do mês inteiro em formato Excel (.xlsx)"
-                  class="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition shadow-2xs">
+                  class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition shadow-2xs">
             <i data-lucide="sheet" class="w-3.5 h-3.5"></i>
             <span>XLSX</span>
           </button>
@@ -349,7 +353,7 @@
         </div>
       </div>
 
-      <!-- BLOCO SEPARADO LOGO ABAIXO DA TABELA DA ESCALA: MÉDICOS DE PLANTÃO AGORA -->
+      <!-- BLOCO SEPARADO LOGO ABAIXO DA TABELA DA ESCALA: MÉDICOS DE PLANTÃO AGORA (APENAS NOME E CONTATO) -->
       <div id="oncall-now-block" class="m3-card overflow-hidden">
         <div class="px-4 py-3 bg-gradient-to-r from-brand-800 via-brand-700 to-brand-950 text-white flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-2.5">
@@ -373,9 +377,8 @@
           <table class="w-full text-left text-xs sm:text-sm select-none">
             <thead class="bg-[#E8ECF7] text-brand-950 font-bold uppercase tracking-wider text-[10px] sm:text-[11px]">
               <tr>
-                <th class="px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/60 w-32 sm:w-44">Horário / Função</th>
-                <th class="px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/60">Profissional em Plantão</th>
-                <th class="px-3.5 py-2.5 border-b border-m3-outlineVariant/60 text-right">Contato Rápido</th>
+                <th class="px-4 py-2.5 border-b border-r border-m3-outlineVariant/60">Profissional em Plantão</th>
+                <th class="px-4 py-2.5 border-b border-m3-outlineVariant/60 text-right">Contato</th>
               </tr>
             </thead>
             <tbody id="now-doctors-table-body" class="divide-y divide-m3-outlineVariant/40 text-slate-700"></tbody>
@@ -385,7 +388,7 @@
 
     </section>
 
-    <!-- ================= 2. ABA: PACIENTES NA MATERNIDADE (PASSAGEM DE PLANTÃO - GOOGLE SHEETS + FIREBASE) ================= -->
+    <!-- ================= 2. ABA: PACIENTES NA MATERNIDADE ================= -->
     <section id="view-maternity" class="view-section space-y-3 hidden">
       <!-- Cabeçalho da Tabela de Pacientes da Maternidade -->
       <div class="m3-card px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -402,14 +405,14 @@
               Carregando...
             </span>
           </div>
-          <p id="maternity-sync-status" class="text-[11px] text-slate-500 font-semibold mt-0.5">
-            Sincronizado em tempo real (Firebase + Planilha Google Docs)
+          <p id="maternity-sync-status" class="text-[11px] text-emerald-700 font-bold mt-0.5">
+            Sincronizado
           </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5">
           <button type="button" onclick="app.syncMaternityFromGoogleSheet(true)"
-                  title="Sincronizar agora com a planilha do Google Docs"
+                  title="Sincronizar agora"
                   class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-brand-700"></i>
             <span>Sincronizar</span>
@@ -417,14 +420,14 @@
 
           <a href="https://docs.google.com/spreadsheets/d/1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0/edit?gid=0#gid=0"
              target="_blank" rel="noopener"
-             title="Abrir planilha original no Google Sheets"
+             title="Abrir planilha original"
              class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
             <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-            <span>Planilha Google</span>
+            <span>Planilha</span>
           </a>
 
           <button type="button" onclick="app.openMaternitySyncConfigModal()"
-                  title="Configurar conector de escrita automática na Planilha Google"
+                  title="Configurar conector de sincronização"
                   class="flex items-center justify-center w-8 h-8 rounded-full bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
             <i data-lucide="link-2" class="w-3.5 h-3.5 text-brand-700"></i>
           </button>
@@ -483,7 +486,7 @@
           </div>
           <div>
             <h3 class="text-xs sm:text-sm font-extrabold text-brand-950">Evolução e Passagem de Plantão por Leito</h3>
-            <p class="text-[11px] text-slate-600">Selecione o quarto (Coluna A) ou toque diretamente em uma linha da tabela para preencher os dados da paciente</p>
+            <p class="text-[11px] text-slate-600">Selecione o quarto ou toque diretamente em uma linha da tabela para preencher os dados da paciente</p>
           </div>
         </div>
 
@@ -521,52 +524,106 @@
       <div id="doctors-catalog-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
     </section>
 
-    <!-- ================= 4. ABA: ESTATÍSTICAS E FECHAMENTO ================= -->
+    <!-- ================= 4. ABA: ESTATÍSTICAS E FECHAMENTO (COLAPSÁVEL: PROFISSIONAIS + PACIENTES) ================= -->
     <section id="view-stats" class="view-section space-y-4 hidden">
-      <div class="m3-card p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <!-- Barra Superior de Seleção do Mês -->
+      <div class="m3-card p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div>
-          <h2 class="text-lg font-extrabold text-brand-950">Fechamento Mensal de Escala</h2>
-          <p class="text-xs text-slate-500">Contabilização de horas de plantão e rotineiro</p>
+          <h2 class="text-lg font-extrabold text-brand-950">Fechamento Mensal & Indicadores Hospitalares</h2>
+          <p class="text-xs text-slate-500">Toque em cada seção abaixo para expandir ou recolher os dados</p>
         </div>
 
         <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-600">Mês:</span>
           <input type="month" id="stats-month-picker" onchange="app.loadStats(this.value)" 
                  class="text-xs sm:text-sm bg-m3-containerLow border border-m3-outlineVariant rounded-full px-3.5 py-1.5 font-bold text-brand-950">
-          <button onclick="app.exportStatsCSV()" class="flex items-center gap-1.5 text-xs bg-brand-100 hover:bg-brand-200 text-brand-950 px-4 py-2 rounded-full font-bold transition">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            <span>Exportar CSV</span>
-          </button>
         </div>
       </div>
 
+      <!-- SEÇÃO COLAPSÁVEL 1: FECHAMENTO DOS PROFISSIONAIS -->
       <div class="m3-card overflow-hidden">
-        <div id="stats-scroll-viewport" class="stats-scroll-container" onscroll="app.handleStatsScroll(this)">
-          <table class="stats-scroll-table text-left text-xs sm:text-sm select-none">
-            <thead class="bg-[#E8ECF7] text-brand-950 font-bold uppercase tracking-wider text-[10px] sm:text-[11px] leading-tight">
-              <tr>
-                <th class="sticky-stats-col bg-[#E8ECF7] px-3 sm:px-4 py-2.5 border-r border-b border-m3-outlineVariant/70">Profissional</th>
-                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Turnos Diurnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
-                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Plantões Noturnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(12h)</span></th>
-                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Rotineiro<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
-                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Reforços<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(4h)</span></th>
-                <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-m3-outlineVariant/40 text-center font-extrabold">TOTAL (H)</th>
-              </tr>
-            </thead>
-            <tbody id="stats-table-body" class="text-slate-700"></tbody>
-          </table>
+        <div onclick="app.toggleStatsSection('professionals')"
+             class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+              <i data-lucide="users" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Fechamento dos Profissionais</h3>
+              <p class="text-[11px] text-slate-500 font-medium">Carga horária mensal consolidada (Plantões Diurnos, Noturnos, Rotineiro e Reforços)</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" onclick="event.stopPropagation(); app.exportStatsCSV()"
+                    class="flex items-center gap-1.5 text-xs bg-brand-100 hover:bg-brand-200 text-brand-950 px-3 py-1.5 rounded-full font-extrabold transition">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span class="hidden sm:inline">Exportar CSV</span>
+            </button>
+            <div class="w-8 h-8 rounded-full bg-white border border-m3-outlineVariant/60 flex items-center justify-center text-brand-950">
+              <i id="chevron-stats-professionals" data-lucide="chevron-up" class="w-4 h-4 transition-transform duration-200"></i>
+            </div>
+          </div>
         </div>
 
-        <!-- Barra de Progresso de Rolagem Horizontal (Fechamento Mensal) -->
-        <div class="px-3.5 py-2 bg-m3-containerLow/90 border-t border-m3-outlineVariant/50 flex items-center gap-3">
-          <div class="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 uppercase tracking-wider shrink-0">
-            <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
-            <span>Deslize</span>
+        <div id="body-stats-professionals">
+          <div id="stats-scroll-viewport" class="stats-scroll-container" onscroll="app.handleStatsScroll(this)">
+            <table class="stats-scroll-table text-left text-xs sm:text-sm select-none">
+              <thead class="bg-[#E8ECF7] text-brand-950 font-bold uppercase tracking-wider text-[10px] sm:text-[11px] leading-tight">
+                <tr>
+                  <th class="sticky-stats-col bg-[#E8ECF7] px-3 sm:px-4 py-2.5 border-r border-b border-m3-outlineVariant/70">Profissional</th>
+                  <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Turnos Diurnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
+                  <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Plantões Noturnos<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(12h)</span></th>
+                  <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Rotineiro<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(6h)</span></th>
+                  <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/40 text-center">Reforços<br><span class="text-[9px] sm:text-[10px] font-semibold text-brand-700">(4h)</span></th>
+                  <th class="stats-data-col px-2.5 sm:px-3.5 py-2.5 border-b border-m3-outlineVariant/40 text-center font-extrabold">TOTAL (H)</th>
+                </tr>
+              </thead>
+              <tbody id="stats-table-body" class="text-slate-700"></tbody>
+            </table>
           </div>
-          <div id="stats-scroll-track" onclick="app.handleTrackClick(event, 'stats-scroll-viewport')"
-               class="relative flex-1 h-2 bg-brand-100 rounded-full overflow-hidden cursor-pointer">
-            <div id="stats-scroll-bar" class="h-full bg-gradient-to-r from-brand-600 to-brand-800 rounded-full transition-[width] duration-75" style="width: 30%;"></div>
+
+          <!-- Barra de Progresso de Rolagem Horizontal (Fechamento Mensal) -->
+          <div class="px-3.5 py-2 bg-m3-containerLow/90 border-t border-m3-outlineVariant/50 flex items-center gap-3">
+            <div class="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 uppercase tracking-wider shrink-0">
+              <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
+              <span>Deslize</span>
+            </div>
+            <div id="stats-scroll-track" onclick="app.handleTrackClick(event, 'stats-scroll-viewport')"
+                 class="relative flex-1 h-2 bg-brand-100 rounded-full overflow-hidden cursor-pointer">
+              <div id="stats-scroll-bar" class="h-full bg-gradient-to-r from-brand-600 to-brand-800 rounded-full transition-[width] duration-75" style="width: 30%;"></div>
+            </div>
+            <span id="stats-scroll-pct" class="text-[10px] font-extrabold text-brand-950 font-mono w-8 text-right shrink-0">30%</span>
           </div>
-          <span id="stats-scroll-pct" class="text-[10px] font-extrabold text-brand-950 font-mono w-8 text-right shrink-0">30%</span>
+        </div>
+      </div>
+
+      <!-- SEÇÃO COLAPSÁVEL 2: INDICADORES MENSAIS DE PACIENTES DA MATERNIDADE -->
+      <div class="m3-card overflow-hidden">
+        <div onclick="app.toggleStatsSection('patients')"
+             class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center shrink-0">
+              <i data-lucide="heart-pulse" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Fechamento de Pacientes • Indicadores da Maternidade</h3>
+              <p class="text-[11px] text-slate-500 font-medium">Tempo médio de internação, pacientes atendidas, perfil de alto risco, paridade e motivos de internação</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <span id="stats-patients-summary-pill" class="hidden sm:inline-block text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-brand-100 text-brand-900">
+              Consolidado Mensal
+            </span>
+            <div class="w-8 h-8 rounded-full bg-white border border-m3-outlineVariant/60 flex items-center justify-center text-brand-950">
+              <i id="chevron-stats-patients" data-lucide="chevron-up" class="w-4 h-4 transition-transform duration-200"></i>
+            </div>
+          </div>
+        </div>
+
+        <div id="body-stats-patients" class="p-4 sm:p-5 space-y-4">
+          <div id="stats-patients-content"></div>
         </div>
       </div>
     </section>
@@ -960,7 +1017,7 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: ADICIONAR / EDITAR EVOLUÇÃO DA MATERNIDADE (LINHA 2 DO GOOGLE SHEETS) ================= -->
+  <!-- ================= MODAL: ADICIONAR / EDITAR EVOLUÇÃO DA MATERNIDADE ================= -->
   <div id="modal-maternity-evolution" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active max-h-[92vh] flex flex-col">
       <div class="px-6 py-4 bg-gradient-to-r from-brand-800 to-brand-950 text-white flex items-center justify-between shrink-0">
@@ -968,7 +1025,7 @@
           <i data-lucide="file-plus-2" class="w-5 h-5 text-emerald-300"></i>
           <div>
             <h3 class="font-extrabold text-sm sm:text-base leading-tight">Adicionar Evolução • Maternidade</h3>
-            <p class="text-[11px] text-brand-100">Salva em tempo real no App e envia para a planilha do Google Docs</p>
+            <p class="text-[11px] text-brand-100">Preencha os dados clínicos da paciente no leito selecionado</p>
           </div>
         </div>
         <button type="button" onclick="app.closeMaternityEvolutionModal()" class="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition">
@@ -977,69 +1034,95 @@
       </div>
 
       <form onsubmit="app.handleSaveMaternityEvolution(event)" class="p-5 sm:p-6 space-y-3.5 overflow-y-auto flex-1">
-        <!-- Seleção do Quarto / Leito (Coluna A) -->
+        <!-- Seleção do Quarto / Leito -->
         <div>
           <label class="block text-xs font-extrabold text-brand-950 mb-1">
-            Quarto / Leito (Coluna A) *
+            Quarto / Leito *
           </label>
           <select id="evo-select-leito" required onchange="app.handleEvolutionLeitoChange(this.value)"
                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </select>
         </div>
 
-        <!-- Campos correspondentes à Linha 2 da Planilha: NOME, PARIDADE, ALTO RISCO, INTERNAÇÃO POR, OBSERVAÇÕES -->
+        <!-- Campos de Evolução (Sem indicadores de coluna) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">NOME (Coluna B)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">NOME</label>
             <input type="text" id="evo-input-nome" placeholder="Nome completo da paciente"
                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">PARIDADE (Coluna C)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">PARIDADE</label>
             <input type="text" id="evo-input-paridade" placeholder="Ex: G2 P1 A0 • IG 39s"
                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">ALTO RISCO (Coluna D)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ALTO RISCO</label>
             <input type="text" id="evo-input-altorisco" placeholder="Ex: Não / Sim (DMG, DHEG...)"
                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
 
           <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">INTERNAÇÃO POR (Coluna E)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">INTERNAÇÃO POR</label>
             <input type="text" id="evo-input-internacao" placeholder="Motivo da internação / diagnóstico obstétrico"
                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
 
           <div class="sm:col-span-2">
-            <label class="block text-xs font-bold text-slate-700 mb-1">OBSERVAÇÕES / EVOLUÇÃO (Coluna F)</label>
+            <label class="block text-xs font-bold text-slate-700 mb-1">OBSERVAÇÕES / EVOLUÇÃO</label>
             <textarea id="evo-input-observacoes" rows="3" placeholder="Evolução clínica, dilatação, exames, conduta e pendências para o plantão..."
                       class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"></textarea>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
-          <button type="button" onclick="app.clearMaternityBed()"
-                  class="text-xs text-scred-600 hover:text-scred-800 font-bold px-3 py-2 rounded-full hover:bg-scred-50 flex items-center gap-1 transition">
-            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-            <span>Limpar Leito (Alta)</span>
-          </button>
-
-          <div class="flex items-center gap-2 ml-auto">
+        <div class="pt-3 border-t border-slate-100 space-y-2.5">
+          <!-- 1ª Linha: Cancelar e Salvar evolução -->
+          <div class="grid grid-cols-2 gap-2.5 w-full">
             <button type="button" onclick="app.closeMaternityEvolutionModal()"
-                    class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+                    class="w-full py-2.5 px-4 text-xs sm:text-sm font-bold text-slate-600 bg-m3-containerLow hover:bg-m3-container rounded-full transition">
               Cancelar
             </button>
             <button type="submit" id="btn-save-evolution"
-                    class="px-5 py-2.5 text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition flex items-center gap-1.5">
-              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                    class="w-full py-2.5 px-4 text-xs sm:text-sm font-extrabold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition flex items-center justify-center gap-1.5">
+              <i data-lucide="check" class="w-4 h-4"></i>
               <span>Salvar Evolução</span>
             </button>
           </div>
+
+          <!-- 2ª Linha (Mais abaixo): Botão Limpar Leito (Alta) em tom de vermelho ocupando toda a largura -->
+          <button type="button" onclick="app.requestClearMaternityBed()"
+                  class="w-full py-3 px-4 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border-2 border-scred-200 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-2xs">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+            <span>Limpar Leito (Alta)</span>
+          </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CONFIRMAÇÃO DE ALTA / LIMPAR DADOS DE LEITO ================= -->
+  <div id="modal-confirm-discharge" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-sm w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-scred-100 text-scred-600 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+      </div>
+      <h3 class="text-base sm:text-lg font-extrabold text-brand-950 leading-snug">
+        Confirmar a alta, limpar dados de leito? Essa ação não podera ser desfeita.
+      </h3>
+      <p id="confirm-discharge-leito-label" class="text-xs text-slate-500 mt-1.5 mb-5 font-semibold"></p>
+
+      <div class="flex items-center gap-2.5">
+        <button type="button" onclick="app.closeDischargeConfirmModal()"
+                class="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-m3-containerLow hover:bg-m3-container rounded-full transition">
+          Cancelar
+        </button>
+        <button type="button" onclick="app.confirmClearMaternityBed()"
+                class="flex-1 py-2.5 text-xs font-extrabold bg-scred-600 hover:bg-scred-700 text-white rounded-full shadow-md transition">
+          Confirmar Alta
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1118,10 +1201,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=13"></script>
-  <script src="/app.js?v=13"></script>
+  <script src="/initial-data.js?v=14"></script>
+  <script src="/app.js?v=14"></script>
   <script>
-    const CURRENT_APP_VERSION = "v13-202611121600";
+    const CURRENT_APP_VERSION = "v14-202611121740";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1144,7 +1227,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=10", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=14", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }
