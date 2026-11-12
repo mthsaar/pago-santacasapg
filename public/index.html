@@ -19,7 +19,7 @@
   <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=14">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
   <link rel="manifest" href="/manifest.json?v=14">
-  <link rel="stylesheet" href="/styles.css?v=17">
+  <link rel="stylesheet" href="/styles.css?v=18">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -1271,22 +1271,22 @@
               </button>
             </div>
 
-            <!-- Sub-painel que abre automaticamente ao selecionar PN, PN+DIU, CST, CST+DIU ou CST+LTB (Empilhado no mobile para não sobrepor nem exceder a janela) -->
-            <div id="evo-birth-datetime-box" class="hidden bg-scred-50/70 border border-scred-200 rounded-xl p-3 space-y-2.5 overflow-hidden w-full max-w-full">
-              <div class="flex items-center gap-1.5 text-xs font-extrabold text-scred-800">
+            <!-- Sub-painel que abre automaticamente ao selecionar PN, PN+DIU, CST, CST+DIU ou CST+LTB (Empilhado com altura ampla de 48px no mobile) -->
+            <div id="evo-birth-datetime-box" class="hidden bg-scred-50/70 border border-scred-200 rounded-xl p-3.5 space-y-3 overflow-hidden w-full max-w-full">
+              <div class="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-scred-800">
                 <i data-lucide="baby" class="w-4 h-4 text-scred-600 shrink-0"></i>
                 <span>Data e Hora do Nascimento (Parto / Cesárea)</span>
               </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
-                <div class="min-w-0 w-full overflow-hidden">
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Data do Nascimento</label>
+              <div class="flex flex-col sm:grid sm:grid-cols-2 gap-3 w-full">
+                <div class="min-w-0 w-full">
+                  <label class="block text-xs font-extrabold text-slate-700 mb-1">Data do Nascimento</label>
                   <input type="date" id="evo-birth-date" onchange="app.syncInternacaoTextFromControls()"
-                         class="w-full max-w-full min-w-0 block box-border bg-white border border-scred-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
+                         class="w-full max-w-full min-w-0 h-12 min-h-[48px] bg-white border border-scred-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
                 </div>
-                <div class="min-w-0 w-full overflow-hidden">
-                  <label class="block text-xs font-bold text-slate-700 mb-1">Hora do Nascimento</label>
+                <div class="min-w-0 w-full">
+                  <label class="block text-xs font-extrabold text-slate-700 mb-1">Hora do Nascimento</label>
                   <input type="time" id="evo-birth-time" onchange="app.syncInternacaoTextFromControls()"
-                         class="w-full max-w-full min-w-0 block box-border bg-white border border-scred-200 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
+                         class="w-full max-w-full min-w-0 h-12 min-h-[48px] bg-white border border-scred-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-500">
                 </div>
               </div>
             </div>
@@ -1348,11 +1348,11 @@
                   <div class="min-w-0 w-full overflow-hidden">
                     <label class="block text-xs font-bold text-slate-700 mb-1">Horário do aviso</label>
                     <input type="time" id="evo-reminder-time-input" oninput="app.updateReminderDoctorPreview()"
-                           class="w-full max-w-full min-w-0 block box-border bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs sm:text-sm font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                           class="w-full max-w-full min-w-0 h-12 min-h-[48px] bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
                   </div>
 
                   <button type="button" onclick="app.addClinicalReminderToObservation()"
-                          class="w-full py-2.5 px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition shadow-xs">
+                          class="w-full h-12 min-h-[48px] py-2.5 px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition shadow-xs">
                     <i data-lucide="plus" class="w-4 h-4 shrink-0"></i>
                     <span>Incluir Lembrete</span>
                   </button>
@@ -1694,10 +1694,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=17"></script>
-  <script src="/app.js?v=17"></script>
+  <script src="/initial-data.js?v=18"></script>
+  <script src="/app.js?v=18"></script>
   <script>
-    const CURRENT_APP_VERSION = "v17-202611122038";
+    const CURRENT_APP_VERSION = "v18-202611122052";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1720,7 +1720,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=17", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=18", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }
