@@ -10,11 +10,32 @@ const SILHOUETTE_SVG = `
   </svg>
 `;
 
+const MATERNITY_SHEET_ID = '1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0';
+
+const MATERNITY_DEFAULT_GROUPS = [
+  {
+    title: 'Pré-Parto & Observação',
+    beds: ['PRÉ 1', 'PRÉ 2', 'PRÉ 3', 'OBS 1', 'OBS 2']
+  },
+  {
+    title: 'Apartamentos / Quartos (301 a 310)',
+    beds: ['301', '302', '303', '304', '305', '306', '307', '308', '309', '310']
+  },
+  {
+    title: 'Enfermarias (319 a 326)',
+    beds: ['319-1', '319-2', '321-1', '321-2', '323-1', '323-2', '325-1', '325-2', '326-1', '326-2']
+  },
+  {
+    title: 'Enfermarias & Quartos (327 a 336)',
+    beds: ['327-1', '327-2', '328-1', '328-2', '329-1', '329-2', '330-1', '330-2', '331-1', '331-2', '332', '333', '334', '335-1', '335-2', '336']
+  }
+];
+
 const app = {
   state: {
     isEditorMode: false,
     currentView: 'spreadsheet',
-    escalaSubMode: 'week', // 'week' (Semana) ou 'day' (Visão Diária integrada)
+    escalaSubMode: 'week',
     doctors: [],
     shifts: [],
     settings: {
@@ -33,7 +54,12 @@ const app = {
     firebaseActive: false,
     firestoreDb: null,
     undoStack: [],
-    redoStack: []
+    redoStack: [],
+    maternityFirebaseMap: {},
+    maternitySheetMap: {},
+    maternityLastSheetHash: {},
+    maternityExtraBeds: [],
+    maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || ''
   },
 
   async init() {
@@ -49,9 +75,12 @@ const app = {
     this.setupDatePickers();
     this.updateModeUI();
     this.startClockAndCountdown();
+    this.populateEvolutionLeitoSelect();
+    this.renderMaternityView();
 
     await this.initFirebase();
     await this.loadAllData();
+    this.syncMaternityFromGoogleSheet();
 
     this.switchView(this.state.currentView);
 
@@ -66,7 +95,7 @@ const app = {
 
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        this.undoShiftAction();
+        this.requestUndoShiftAction();
       } else if ((e.metaKey || e.ctrlKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
         e.preventDefault();
         this.redoShiftAction();
@@ -76,6 +105,10 @@ const app = {
     setInterval(() => {
       this.loadNowStatus();
     }, 60000);
+
+    setInterval(() => {
+      this.syncMaternityFromGoogleSheet();
+    }, 12000);
   },
 
   // ================= FIREBASE CLOUD FIRESTORE INTEGRATION =================
@@ -138,6 +171,28 @@ const app = {
         this.state.shifts = shifts;
         this.calculateNowStatusFromState();
         this.render();
+      }
+    });
+
+    this.state.firestoreDb.collection('maternity_patients').onSnapshot(snapshot => {
+      const map = {};
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data && data.leito) {
+          map[String(data.leito).trim().toUpperCase()] = { id: doc.id, ...data };
+        }
+      });
+      this.state.maternityFirebaseMap = map;
+      this.renderMaternityView();
+    });
+
+    this.state.firestoreDb.collection('settings').doc('maternity_sheet_sync').onSnapshot(doc => {
+      if (doc && doc.exists) {
+        const data = doc.data();
+        if (data && data.webhook_url) {
+          this.state.maternityWebhookUrl = data.webhook_url;
+          localStorage.setItem('maternity_sheet_webhook', data.webhook_url);
+        }
       }
     });
   },
@@ -542,14 +597,10 @@ const app = {
 
   // ================= NAVEGAÇÃO ENTRE ABAS (M3 EXPRESSIVE) =================
   switchView(viewName) {
-    // Se alguém chamar 'daily', redireciona para 'spreadsheet' em modo 'day'
-    if (viewName === 'daily') {
-      this.state.currentView = 'spreadsheet';
-      this.setEscalaSubMode('day');
+    if (viewName === 'daily' || viewName === 'now') {
       viewName = 'spreadsheet';
-    } else {
-      this.state.currentView = viewName;
     }
+    this.state.currentView = viewName;
 
     // Desktop Tabs
     document.querySelectorAll('.view-tab').forEach(tab => {
@@ -562,8 +613,8 @@ const app = {
       activeTab.classList.remove('text-slate-600', 'hover:text-brand-950', 'hover:bg-white/60');
     }
 
-    // Mobile Bottom Navigation Bar (Material 3 Pill Indicators: Escala, Agora, Médicos, Fechamento)
-    ['spreadsheet', 'now', 'doctors', 'stats'].forEach(v => {
+    // Mobile Bottom Navigation Bar (Material 3 Pill Indicators: Escala, Pacientes, Médicos, Fechamento)
+    ['spreadsheet', 'maternity', 'doctors', 'stats'].forEach(v => {
       const btn = document.getElementById(`bnav-${v}`);
       if (!btn) return;
       const pill = btn.querySelector('.bnav-pill');
@@ -594,9 +645,11 @@ const app = {
     if (targetSection) targetSection.classList.remove('hidden');
 
     if (viewName === 'spreadsheet') {
-      this.renderEscalaView();
-    } else if (viewName === 'now') {
+      this.renderSpreadsheetView();
       this.loadNowStatus();
+    } else if (viewName === 'maternity') {
+      this.renderMaternityView();
+      this.syncMaternityFromGoogleSheet();
     } else if (viewName === 'doctors') {
       this.renderDoctorsCatalog();
     } else if (viewName === 'stats') {
@@ -606,82 +659,24 @@ const app = {
     if (window.lucide) lucide.createIcons();
   },
 
-  // ================= SUB-MODO DA PÁGINA "ESCALA": SEMANA VS DIA =================
-  setEscalaSubMode(mode) {
-    this.state.escalaSubMode = mode;
-
-    const btnWeek = document.getElementById('escala-mode-week');
-    const btnDay = document.getElementById('escala-mode-day');
-    const weekWrapper = document.getElementById('escala-week-wrapper');
-    const dayWrapper = document.getElementById('escala-day-wrapper');
-    const weekPills = document.getElementById('week-nav-pills');
-    const dayPickerBar = document.getElementById('day-picker-bar');
-
-    if (mode === 'day') {
-      if (btnDay) {
-        btnDay.className = "px-3 py-1 rounded-full text-xs font-extrabold transition-all bg-brand-700 text-white shadow-sm";
-      }
-      if (btnWeek) {
-        btnWeek.className = "px-3 py-1 rounded-full text-xs font-bold transition-all text-slate-600 hover:text-brand-950";
-      }
-      if (weekWrapper) weekWrapper.classList.add('hidden');
-      if (dayWrapper) dayWrapper.classList.remove('hidden');
-      if (weekPills) weekPills.classList.add('hidden');
-      if (dayPickerBar) dayPickerBar.classList.remove('hidden');
-    } else {
-      if (btnWeek) {
-        btnWeek.className = "px-3 py-1 rounded-full text-xs font-extrabold transition-all bg-brand-700 text-white shadow-sm";
-      }
-      if (btnDay) {
-        btnDay.className = "px-3 py-1 rounded-full text-xs font-bold transition-all text-slate-600 hover:text-brand-950";
-      }
-      if (weekWrapper) weekWrapper.classList.remove('hidden');
-      if (dayWrapper) dayWrapper.classList.add('hidden');
-      if (weekPills) weekPills.classList.remove('hidden');
-      if (dayPickerBar) dayPickerBar.classList.add('hidden');
-    }
-
-    this.renderEscalaView();
-  },
-
   renderEscalaView() {
-    if (this.state.escalaSubMode === 'day') {
-      this.renderDailyView();
-    } else {
-      this.renderSpreadsheetView();
-    }
+    this.renderSpreadsheetView();
   },
 
   handlePeriodPrev() {
-    if (this.state.escalaSubMode === 'day') {
-      this.prevDay();
-    } else {
-      this.prevMonth();
-    }
+    this.prevMonth();
   },
 
   handlePeriodNext() {
-    if (this.state.escalaSubMode === 'day') {
-      this.nextDay();
-    } else {
-      this.nextMonth();
-    }
+    this.nextMonth();
   },
 
   handleArrowPrev() {
-    if (this.state.escalaSubMode === 'day') {
-      this.prevDay();
-    } else {
-      this.prevWeek();
-    }
+    this.prevWeek();
   },
 
   handleArrowNext() {
-    if (this.state.escalaSubMode === 'day') {
-      this.nextDay();
-    } else {
-      this.nextWeek();
-    }
+    this.nextWeek();
   },
 
   handleTodayClick() {
@@ -689,19 +684,14 @@ const app = {
     const targetDate = todayStr.startsWith('2026-11') ? todayStr : '2026-11-03';
     this.state.selectedDate = targetDate;
     this.state.currentMonth = targetDate.slice(0, 7);
-
-    if (this.state.escalaSubMode === 'day') {
-      this.renderDailyView();
-    } else {
-      this.scrollToCurrentWeek();
-    }
+    this.scrollToCurrentWeek();
   },
 
   render() {
     this.updateModeUI();
     this.renderSpreadsheetView();
-    this.renderDailyView();
     this.renderNowView();
+    this.renderMaternityView();
     this.renderDoctorsCatalog();
   },
 
@@ -1368,165 +1358,634 @@ const app = {
   },
 
   // =========================================================================
-  // 2. RENDER: PLANTÃO AGORA (ROTINEIRO APENAS ENTRE 07h E 13h)
+  // 2. RENDER: TABELA DE MÉDICOS DE PLANTÃO AGORA (BLOCO ABAIXO DA ESCALA)
   // =========================================================================
   renderNowView() {
     const data = this.state.activeShiftNow;
     if (!data) return;
 
     const shiftBadge = document.getElementById('now-shift-badge');
-    const shiftTitle = document.getElementById('now-shift-title');
-
     if (shiftBadge) shiftBadge.textContent = data.shift_label || 'Turno Ativo';
-    if (shiftTitle) shiftTitle.textContent = 'Equipe Plantonista em Serviço';
 
-    // REQUISITO: Exibir o Rotineiro APENAS entre as 07:00 e as 13:00
+    const tbody = document.getElementById('now-doctors-table-body');
+    if (!tbody) return;
+
     const nowHour = new Date().getHours();
     const isRoutineWindow = (nowHour >= 7 && nowHour < 13);
 
-    const routineContainer = document.getElementById('now-routine-container');
-    if (routineContainer) {
-      if (isRoutineWindow && data.routine_doctor) {
-        const doc = data.routine_doctor;
-        const doctorObj = this.state.doctors.find(d => String(d.id) === String(doc.doctor_id)) || doc;
-        const docName = doctorObj.name || doc.doctor_name;
-        const docPhone = doctorObj.phone || doc.doctor_phone || '';
-        const phoneDisplay = docPhone && docPhone.trim() !== '' ? docPhone : 'Não cadastrado';
-        const hasPhone = Boolean(docPhone && docPhone.trim() !== '');
+    const rows = [];
 
-        routineContainer.innerHTML = `
-          <div class="m3-card bg-gradient-to-r from-brand-50 via-white to-brand-50/50 border-2 border-brand-200 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div class="flex items-center gap-4">
-              <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-brand-300 shadow-sm bg-brand-50 shrink-0 flex items-center justify-center cursor-pointer"
-                   onclick="app.openDoctorProfileById('${doc.doctor_id}')">
-                ${this.renderAvatar(doctorObj.photo_url || doc.doctor_photo)}
+    // Rotineiro exibido APENAS entre 07:00 e 13:00
+    if (isRoutineWindow && data.routine_doctor) {
+      rows.push({
+        badgeText: '07-13h',
+        subLabel: 'Rotineiro',
+        badgeClass: 'bg-brand-100 text-brand-950 border border-brand-200',
+        shift: data.routine_doctor
+      });
+    }
+
+    if (data.active_shifts && data.active_shifts.length > 0) {
+      data.active_shifts.forEach(shift => {
+        let badgeText = '07-13h';
+        let subLabel = 'Plantão Manhã';
+        let badgeClass = 'bg-m3-container text-brand-950 border border-m3-outlineVariant/60';
+
+        if (shift.shift_type === 'afternoon') {
+          badgeText = '13-19h';
+          subLabel = 'Plantão Tarde';
+        } else if (shift.shift_type === 'evening') {
+          badgeText = '19-23h';
+          subLabel = 'Reforço';
+          badgeClass = 'bg-scred-50 text-scred-800 border border-scred-200';
+        } else if (shift.shift_type === 'night') {
+          badgeText = '19-07h';
+          subLabel = 'Noturno';
+          badgeClass = 'bg-amber-100 text-amber-950 border border-amber-300';
+        }
+
+        rows.push({
+          badgeText,
+          subLabel,
+          badgeClass,
+          shift
+        });
+      });
+    }
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" class="px-4 py-6 text-center text-xs text-slate-500 font-semibold">
+            Nenhum plantonista escalado para o horário atual.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(item => {
+      const shift = item.shift;
+      const doctorObj = this.state.doctors.find(d => String(d.id) === String(shift.doctor_id)) || shift;
+      const docName = doctorObj.name || shift.doctor_name || 'Profissional';
+      const docPhone = doctorObj.phone || shift.doctor_phone || '';
+      const phoneDisplay = docPhone && docPhone.trim() !== '' ? docPhone : 'Não cadastrado';
+      const hasPhone = Boolean(docPhone && docPhone.trim() !== '');
+      const spec = this.formatSpecialty(doctorObj.specialty);
+
+      return `
+        <tr class="hover:bg-brand-50/40 transition">
+          <td class="px-3.5 py-2.5 border-r border-m3-outlineVariant/40 align-middle whitespace-nowrap">
+            <div class="inline-flex flex-col items-start px-2.5 py-1 rounded-xl ${item.badgeClass}">
+              <span class="text-xs font-extrabold leading-none">${item.badgeText}</span>
+              <span class="text-[10px] font-bold opacity-85 mt-0.5 leading-none">${item.subLabel}</span>
+            </div>
+          </td>
+          <td class="px-3.5 py-2.5 border-r border-m3-outlineVariant/40 align-middle">
+            <div class="flex items-center gap-2.5 cursor-pointer group" onclick="app.openDoctorProfileById('${shift.doctor_id}')">
+              <div class="w-9 h-9 rounded-xl overflow-hidden border border-brand-200 bg-brand-50 shrink-0 flex items-center justify-center">
+                ${this.renderAvatar(doctorObj.photo_url || shift.doctor_photo)}
               </div>
-              <div>
-                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-brand-700 text-white">
-                  🩺 ROTINEIRO (07-13h)
-                </span>
-                <h3 class="text-lg sm:text-xl font-extrabold text-brand-950 mt-1 cursor-pointer hover:text-brand-700"
-                    onclick="app.openDoctorProfileById('${doc.doctor_id}')">
+              <div class="min-w-0">
+                <div class="font-extrabold text-brand-950 text-xs sm:text-sm group-hover:text-brand-700 group-hover:underline truncate">
                   ${docName}
-                </h3>
-                
-                <!-- Horário de Início e Término ACIMA do campo de telefone -->
-                <div class="mt-2 bg-brand-100/80 border border-brand-200 px-3 py-1 rounded-xl text-xs font-extrabold text-brand-950 inline-block">
-                  Início: 07:00 • Fim: 13:00
                 </div>
-
-                <div class="text-xs text-slate-600 font-mono mt-1.5">
-                  Telefone: <span class="${hasPhone ? 'text-brand-950 font-bold' : 'italic text-slate-400'}">${phoneDisplay}</span>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <span class="text-[10px] font-bold text-brand-800 bg-brand-100 px-2 py-0.2 rounded-full">${spec}</span>
+                  <span class="text-[11px] font-mono ${hasPhone ? 'text-slate-600 font-bold' : 'text-slate-400 italic'}">${phoneDisplay}</span>
                 </div>
               </div>
             </div>
-
-            <div class="flex items-center gap-2">
-              ${hasPhone ? `
-                <a href="tel:${this.cleanPhone(docPhone)}" 
-                   class="flex items-center gap-1.5 bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow transition">
-                  <i data-lucide="phone" class="w-3.5 h-3.5"></i>
-                  <span>Ligar</span>
+          </td>
+          <td class="px-3.5 py-2.5 align-middle text-right whitespace-nowrap">
+            ${hasPhone ? `
+              <div class="inline-flex items-center gap-1.5">
+                <a href="tel:${this.cleanPhone(docPhone)}"
+                   class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-[11px] font-bold shadow-xs transition"
+                   title="Ligar para ${docName}">
+                  <i data-lucide="phone" class="w-3 h-3"></i>
+                  <span class="hidden sm:inline">Ligar</span>
                 </a>
                 <a href="https://wa.me/55${this.cleanPhone(docPhone)}" target="_blank"
-                   class="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow transition">
-                  <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                  <span>WhatsApp</span>
+                   class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition"
+                   title="WhatsApp de ${docName}">
+                  <i data-lucide="message-circle" class="w-3 h-3"></i>
+                  <span class="hidden sm:inline">WhatsApp</span>
                 </a>
-              ` : `
-                <span class="text-xs text-slate-400 italic bg-m3-containerLow px-3.5 py-2 rounded-full border border-m3-outlineVariant/50">
-                  Telefone não cadastrado
-                </span>
-              `}
-            </div>
-          </div>
-        `;
-      } else {
-        // Fora do horário 07h–13h, exibe apenas os plantonistas
-        routineContainer.innerHTML = '';
-      }
-    }
-
-    // Grid dos Plantonistas Ativos
-    const grid = document.getElementById('now-doctors-grid');
-    if (grid) {
-      if (data.active_shifts && data.active_shifts.length > 0) {
-        grid.innerHTML = data.active_shifts.map(shift => {
-          const doctorObj = this.state.doctors.find(d => String(d.id) === String(shift.doctor_id)) || shift;
-          const docName = doctorObj.name || shift.doctor_name;
-          const docPhone = doctorObj.phone || shift.doctor_phone || '';
-          const phoneDisplay = docPhone && docPhone.trim() !== '' ? docPhone : 'Não cadastrado';
-          const hasPhone = Boolean(docPhone && docPhone.trim() !== '');
-          const startTime = shift.start_time || '07:00';
-          const endTime = shift.end_time || '19:00';
-
-          return `
-            <div class="m3-card m3-card-interactive p-5 flex flex-col justify-between">
-              <div>
-                <div class="flex items-center gap-3.5 mb-3.5">
-                  <div class="w-16 h-16 rounded-2xl overflow-hidden border-2 border-brand-100 shadow-sm bg-brand-50 shrink-0 flex items-center justify-center cursor-pointer"
-                       onclick="app.openDoctorProfileById('${shift.doctor_id}')">
-                    ${this.renderAvatar(doctorObj.photo_url || shift.doctor_photo)}
-                  </div>
-
-                  <div class="flex-1 min-w-0">
-                    <h4 class="font-extrabold text-brand-950 text-base leading-snug truncate cursor-pointer hover:text-brand-700"
-                        onclick="app.openDoctorProfileById('${shift.doctor_id}')">
-                      ${docName}
-                    </h4>
-                    <span class="inline-block mt-1 text-[11px] font-bold text-brand-800 bg-brand-100 px-2.5 py-0.5 rounded-full">
-                      ${this.formatSpecialty(doctorObj.specialty)}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Horário de início e término do plantão ACIMA do campo de telefone -->
-                <div class="bg-brand-50 rounded-2xl p-3 border border-brand-200/80 text-xs mb-2.5">
-                  <span class="text-brand-700 font-bold block text-[10px] uppercase tracking-wider">Horário do Plantão</span>
-                  <span class="font-extrabold text-brand-950 text-sm">Início: ${startTime} • Fim: ${endTime}</span>
-                </div>
-
-                <!-- Campo de Telefone -->
-                <div class="bg-m3-containerLow rounded-2xl p-3 flex items-center justify-between text-xs border border-m3-outlineVariant/40 my-2">
-                  <span class="text-slate-500 font-bold">Telefone:</span>
-                  <span class="font-mono ${hasPhone ? 'text-brand-950 font-extrabold' : 'text-slate-400 italic font-medium'}">${phoneDisplay}</span>
-                </div>
               </div>
-
-              <!-- Botões de Ação M3 Pill -->
-              <div class="grid grid-cols-2 gap-2.5 mt-3 pt-3 border-t border-slate-100">
-                ${hasPhone ? `
-                  <a href="tel:${this.cleanPhone(docPhone)}" 
-                     class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold shadow transition">
-                    <i data-lucide="phone" class="w-3.5 h-3.5"></i>
-                    <span>Ligar</span>
-                  </a>
-                  <a href="https://wa.me/55${this.cleanPhone(docPhone)}" target="_blank"
-                     class="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow transition">
-                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                    <span>WhatsApp</span>
-                  </a>
-                ` : `
-                  <div class="col-span-2 text-center text-xs text-slate-400 italic py-2 bg-m3-containerLow rounded-full">
-                    Telefone não cadastrado
-                  </div>
-                `}
-              </div>
-            </div>
-          `;
-        }).join('');
-      } else {
-        grid.innerHTML = `
-          <div class="col-span-full m3-card p-8 text-center">
-            <i data-lucide="info" class="w-10 h-10 text-brand-400 mx-auto mb-2"></i>
-            <h4 class="font-extrabold text-brand-950">Escala deste horário aberta</h4>
-            <p class="text-xs text-slate-500 mt-1">Utilize a aba Escala para visualizar todos os dias do mês.</p>
-          </div>
-        `;
-      }
-    }
+            ` : `
+              <span class="text-[11px] text-slate-400 italic">Sem telefone</span>
+            `}
+          </td>
+        </tr>
+      `;
+    }).join('');
 
     if (window.lucide) lucide.createIcons();
+  },
+
+  // =========================================================================
+  // 2B. PACIENTES NA MATERNIDADE (GOOGLE SHEETS + FIREBASE EM TEMPO REAL)
+  // =========================================================================
+  getAllMaternityGroups() {
+    const groups = MATERNITY_DEFAULT_GROUPS.map(g => ({
+      title: g.title,
+      beds: [...g.beds]
+    }));
+    if (this.state.maternityExtraBeds && this.state.maternityExtraBeds.length > 0) {
+      groups.push({
+        title: 'Outros Leitos',
+        beds: [...this.state.maternityExtraBeds]
+      });
+    }
+    return groups;
+  },
+
+  getAllMaternityBedsFlat() {
+    const list = [];
+    this.getAllMaternityGroups().forEach(g => {
+      g.beds.forEach(b => list.push(b));
+    });
+    return list;
+  },
+
+  normalizeLeitoKey(leito) {
+    return String(leito || '').trim().toUpperCase();
+  },
+
+  leitoToDocId(leito) {
+    return this.normalizeLeitoKey(leito)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9_-]/g, '_');
+  },
+
+  getMaternityBedData(leito) {
+    const key = this.normalizeLeitoKey(leito);
+    const fb = this.state.maternityFirebaseMap[key];
+    const sh = this.state.maternitySheetMap[key];
+
+    const hasFbContent = fb && (fb.nome || fb.paridade || fb.alto_risco || fb.internacao_por || fb.observacoes || fb.cleared_at);
+    const hasShContent = sh && (sh.nome || sh.paridade || sh.alto_risco || sh.internacao_por || sh.observacoes);
+
+    if (hasFbContent) {
+      return {
+        leito,
+        nome: fb.nome || '',
+        paridade: fb.paridade || '',
+        alto_risco: fb.alto_risco || '',
+        internacao_por: fb.internacao_por || '',
+        observacoes: fb.observacoes || '',
+        updated_at: fb.updated_at || ''
+      };
+    }
+
+    if (hasShContent) {
+      return {
+        leito,
+        nome: sh.nome || '',
+        paridade: sh.paridade || '',
+        alto_risco: sh.alto_risco || '',
+        internacao_por: sh.internacao_por || '',
+        observacoes: sh.observacoes || '',
+        updated_at: ''
+      };
+    }
+
+    return {
+      leito,
+      nome: '',
+      paridade: '',
+      alto_risco: '',
+      internacao_por: '',
+      observacoes: '',
+      updated_at: ''
+    };
+  },
+
+  parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let cur = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (inQuotes) {
+        if (ch === '"' && next === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          row.push(cur);
+          cur = '';
+        } else if (ch === '\n') {
+          row.push(cur.replace(/\r$/, ''));
+          rows.push(row);
+          row = [];
+          cur = '';
+        } else if (ch !== '\r') {
+          cur += ch;
+        }
+      }
+    }
+    if (cur.length > 0 || row.length > 0) {
+      row.push(cur.replace(/\r$/, ''));
+      rows.push(row);
+    }
+    return rows;
+  },
+
+  async syncMaternityFromGoogleSheet(showFeedback = false) {
+    const url = `https://docs.google.com/spreadsheets/d/${MATERNITY_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&gid=0&_t=${Date.now()}`;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Falha ao consultar planilha');
+      const csvText = await res.text();
+      const rows = this.parseCSV(csvText);
+
+      const knownSet = new Set();
+      MATERNITY_DEFAULT_GROUPS.forEach(g => g.beds.forEach(b => knownSet.add(this.normalizeLeitoKey(b))));
+
+      const extraBeds = [];
+      const newSheetMap = {};
+
+      for (let i = 0; i < rows.length; i++) {
+        const cols = rows[i];
+        if (!cols || cols.length === 0) continue;
+
+        const rawLeito = String(cols[0] || '').trim();
+        if (!rawLeito) continue;
+
+        const upperLeito = rawLeito.toUpperCase();
+        if (
+          upperLeito.startsWith('PASSAGEM DE PLANT') ||
+          upperLeito === 'LEITO'
+        ) {
+          continue;
+        }
+
+        const entry = {
+          leito: rawLeito,
+          nome: String(cols[1] || '').trim(),
+          paridade: String(cols[2] || '').trim(),
+          alto_risco: String(cols[3] || '').trim(),
+          internacao_por: String(cols[4] || '').trim(),
+          observacoes: String(cols[5] || '').trim()
+        };
+
+        newSheetMap[upperLeito] = entry;
+        if (!knownSet.has(upperLeito)) {
+          knownSet.add(upperLeito);
+          extraBeds.push(rawLeito);
+        }
+
+        // Se a planilha do Google Docs foi alterada diretamente lá, sincroniza com o Firebase
+        const sig = `${entry.nome}|${entry.paridade}|${entry.alto_risco}|${entry.internacao_por}|${entry.observacoes}`;
+        const prevSig = this.state.maternityLastSheetHash[upperLeito];
+        this.state.maternityLastSheetHash[upperLeito] = sig;
+
+        const hasAnySheetVal = Boolean(entry.nome || entry.paridade || entry.alto_risco || entry.internacao_por || entry.observacoes);
+        const fbExisting = this.state.maternityFirebaseMap[upperLeito];
+
+        if (
+          this.state.firebaseActive &&
+          this.state.firestoreDb &&
+          ((prevSig !== undefined && prevSig !== sig) || (hasAnySheetVal && !fbExisting))
+        ) {
+          const docId = this.leitoToDocId(rawLeito);
+          this.state.firestoreDb.collection('maternity_patients').doc(docId).set({
+            leito: rawLeito,
+            nome: entry.nome,
+            paridade: entry.paridade,
+            alto_risco: entry.alto_risco,
+            internacao_por: entry.internacao_por,
+            observacoes: entry.observacoes,
+            cleared_at: !hasAnySheetVal ? new Date().toISOString() : null,
+            updated_at: new Date().toISOString(),
+            source: 'google_sheets'
+          }, { merge: true }).catch(() => {});
+        }
+      }
+
+      this.state.maternitySheetMap = newSheetMap;
+      this.state.maternityExtraBeds = extraBeds;
+      this.populateEvolutionLeitoSelect();
+      this.renderMaternityView();
+
+      const statusEl = document.getElementById('maternity-sync-status');
+      if (statusEl) {
+        const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        statusEl.textContent = `Sincronizado em tempo real (Firebase + Google Docs às ${nowStr})`;
+      }
+
+      if (showFeedback) {
+        this.showToast('Planilha da maternidade sincronizada!', 'success');
+      }
+    } catch (e) {
+      if (showFeedback) {
+        this.showToast('Usando dados em tempo real do Firebase.', 'info');
+      }
+    }
+  },
+
+  renderMaternityView() {
+    const tbody = document.getElementById('maternity-table-body');
+    const badgeEl = document.getElementById('maternity-occupied-badge');
+    if (!tbody) return;
+
+    const groups = this.getAllMaternityGroups();
+    let occupiedCount = 0;
+    let totalBeds = 0;
+
+    let html = '';
+
+    groups.forEach((group, gIdx) => {
+      if (gIdx > 0) {
+        html += `
+          <tr class="bg-[#E8ECF7]/75">
+            <td colspan="6" class="px-3 py-1 border-b border-m3-outlineVariant/60 text-[10px] font-extrabold uppercase tracking-wider text-brand-800">
+              ${group.title}
+            </td>
+          </tr>
+        `;
+      } else {
+        html += `
+          <tr class="bg-[#E8ECF7]/75">
+            <td colspan="6" class="px-3 py-1 border-b border-m3-outlineVariant/60 text-[10px] font-extrabold uppercase tracking-wider text-brand-800">
+              ${group.title}
+            </td>
+          </tr>
+        `;
+      }
+
+      group.beds.forEach(leito => {
+        totalBeds++;
+        const data = this.getMaternityBedData(leito);
+        const isOccupied = Boolean(
+          (data.nome && data.nome.trim() !== '') ||
+          (data.internacao_por && data.internacao_por.trim() !== '') ||
+          (data.observacoes && data.observacoes.trim() !== '')
+        );
+        if (isOccupied) occupiedCount++;
+
+        const riskVal = (data.alto_risco || '').trim();
+        const isHighRisk = Boolean(
+          riskVal !== '' &&
+          !['não', 'nao', 'n', '-', 'baixo', 'habitual'].includes(riskVal.toLowerCase())
+        );
+
+        const rowBg = isOccupied ? 'bg-white hover:bg-brand-50/60' : 'bg-m3-surface/50 hover:bg-brand-50/40';
+        const leitoBg = isOccupied ? 'bg-brand-50 text-brand-950' : 'bg-[#F0F2FA] text-slate-600';
+        const safeLeitoAttr = leito.replace(/'/g, "\\'");
+
+        html += `
+          <tr onclick="app.openMaternityEvolutionModal('${safeLeitoAttr}')"
+              title="Toque para adicionar ou editar evolução do leito ${leito}"
+              class="${rowBg} cursor-pointer transition">
+            <td class="sticky-maternity-col ${leitoBg} px-2 py-2.5 border-r border-b border-m3-outlineVariant/60 font-extrabold text-center align-middle">
+              <div class="inline-flex items-center justify-center gap-1.5">
+                <span class="w-2 h-2 rounded-full ${isOccupied ? 'bg-emerald-500' : 'bg-slate-300'} shrink-0"></span>
+                <span>${this.escapeHtml(leito)}</span>
+              </div>
+            </td>
+            <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle ${isOccupied ? 'font-extrabold text-brand-950' : 'text-slate-400 italic'}">
+              ${data.nome ? this.escapeHtml(data.nome) : 'Livre'}
+            </td>
+            <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle font-semibold text-slate-700 whitespace-nowrap">
+              ${data.paridade ? this.escapeHtml(data.paridade) : '—'}
+            </td>
+            <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle">
+              ${riskVal ? `
+                <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-extrabold ${
+                  isHighRisk
+                    ? 'bg-scred-100 text-scred-900 border border-scred-200'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                }">
+                  ${this.escapeHtml(riskVal)}
+                </span>
+              ` : '<span class="text-slate-400">—</span>'}
+            </td>
+            <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle font-semibold text-slate-800">
+              ${data.internacao_por ? this.escapeHtml(data.internacao_por) : '<span class="text-slate-400">—</span>'}
+            </td>
+            <td class="px-3 py-2 border-b border-m3-outlineVariant/40 align-middle text-slate-700 whitespace-pre-line leading-snug">
+              ${data.observacoes ? this.escapeHtml(data.observacoes) : '<span class="text-slate-400">—</span>'}
+            </td>
+          </tr>
+        `;
+      });
+    });
+
+    tbody.innerHTML = html;
+
+    if (badgeEl) {
+      badgeEl.textContent = `${occupiedCount} de ${totalBeds} leitos ocupados`;
+    }
+  },
+
+  escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
+  handleMaternityScroll(viewport) {
+    if (!viewport) return;
+    const maxScroll = viewport.scrollWidth - viewport.clientWidth;
+    const bar = document.getElementById('maternity-scroll-bar');
+    const pctEl = document.getElementById('maternity-scroll-pct');
+    if (maxScroll <= 0) {
+      if (bar) bar.style.width = '100%';
+      if (pctEl) pctEl.textContent = '100%';
+      return;
+    }
+    const ratio = Math.min(1, Math.max(0, viewport.scrollLeft / maxScroll));
+    const pct = Math.round(15 + ratio * 85);
+    if (bar) bar.style.width = `${pct}%`;
+    if (pctEl) pctEl.textContent = `${pct}%`;
+  },
+
+  populateEvolutionLeitoSelect(selectedLeito = null) {
+    const select = document.getElementById('evo-select-leito');
+    if (!select) return;
+
+    const currentVal = selectedLeito || select.value || 'PRÉ 1';
+    const groups = this.getAllMaternityGroups();
+
+    select.innerHTML = groups.map(group => `
+      <optgroup label="${group.title}">
+        ${group.beds.map(leito => {
+          const bedData = this.getMaternityBedData(leito);
+          const suffix = bedData.nome ? ` — ${bedData.nome}` : ' (Livre)';
+          return `<option value="${leito}" ${leito === currentVal ? 'selected' : ''}>Leito ${leito}${suffix}</option>`;
+        }).join('')}
+      </optgroup>
+    `).join('');
+  },
+
+  openMaternityEvolutionModal(preselectedLeito = null) {
+    const defaultLeito = preselectedLeito || 'PRÉ 1';
+    this.populateEvolutionLeitoSelect(defaultLeito);
+
+    const select = document.getElementById('evo-select-leito');
+    if (select) select.value = defaultLeito;
+
+    this.handleEvolutionLeitoChange(defaultLeito);
+
+    const modal = document.getElementById('modal-maternity-evolution');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeMaternityEvolutionModal() {
+    const modal = document.getElementById('modal-maternity-evolution');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  handleEvolutionLeitoChange(leito) {
+    const data = this.getMaternityBedData(leito);
+    const nomeEl = document.getElementById('evo-input-nome');
+    const parEl = document.getElementById('evo-input-paridade');
+    const riskEl = document.getElementById('evo-input-altorisco');
+    const intEl = document.getElementById('evo-input-internacao');
+    const obsEl = document.getElementById('evo-input-observacoes');
+
+    if (nomeEl) nomeEl.value = data.nome || '';
+    if (parEl) parEl.value = data.paridade || '';
+    if (riskEl) riskEl.value = data.alto_risco || '';
+    if (intEl) intEl.value = data.internacao_por || '';
+    if (obsEl) obsEl.value = data.observacoes || '';
+  },
+
+  async handleSaveMaternityEvolution(e) {
+    e.preventDefault();
+    const leito = document.getElementById('evo-select-leito').value;
+    if (!leito) return;
+
+    const payload = {
+      leito,
+      nome: (document.getElementById('evo-input-nome').value || '').trim(),
+      paridade: (document.getElementById('evo-input-paridade').value || '').trim(),
+      alto_risco: (document.getElementById('evo-input-altorisco').value || '').trim(),
+      internacao_por: (document.getElementById('evo-input-internacao').value || '').trim(),
+      observacoes: (document.getElementById('evo-input-observacoes').value || '').trim(),
+      cleared_at: null,
+      updated_at: new Date().toISOString()
+    };
+
+    await this.saveMaternityBedRecord(payload, 'Evolução salva com sucesso!');
+  },
+
+  async clearMaternityBed() {
+    const leito = document.getElementById('evo-select-leito').value;
+    if (!leito) return;
+
+    const payload = {
+      leito,
+      nome: '',
+      paridade: '',
+      alto_risco: '',
+      internacao_por: '',
+      observacoes: '',
+      cleared_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    await this.saveMaternityBedRecord(payload, `Leito ${leito} liberado!`);
+  },
+
+  async saveMaternityBedRecord(payload, successMsg) {
+    const key = this.normalizeLeitoKey(payload.leito);
+    this.state.maternityFirebaseMap[key] = { ...payload };
+    this.renderMaternityView();
+    this.populateEvolutionLeitoSelect(payload.leito);
+
+    try {
+      if (this.state.firebaseActive && this.state.firestoreDb) {
+        const docId = this.leitoToDocId(payload.leito);
+        await this.state.firestoreDb.collection('maternity_patients').doc(docId).set(payload);
+      }
+
+      // Envia atualização para a planilha do Google Docs
+      await this.pushMaternityRowToGoogleSheet(payload);
+
+      this.closeMaternityEvolutionModal();
+      this.showToast(successMsg, 'success');
+    } catch (err) {
+      this.showToast('Erro ao salvar evolução: ' + err.message, 'error');
+    }
+  },
+
+  async pushMaternityRowToGoogleSheet(payload) {
+    const webhookUrl = (this.state.maternityWebhookUrl || localStorage.getItem('maternity_sheet_webhook') || '').trim();
+    if (!webhookUrl) return;
+
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.warn('Aviso ao enviar para o conector Google Sheets:', e);
+    }
+  },
+
+  openMaternitySyncConfigModal() {
+    const modal = document.getElementById('modal-maternity-sync-config');
+    const input = document.getElementById('maternity-webhook-input');
+    if (input) {
+      input.value = this.state.maternityWebhookUrl || localStorage.getItem('maternity_sheet_webhook') || '';
+    }
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeMaternitySyncConfigModal() {
+    const modal = document.getElementById('modal-maternity-sync-config');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  async saveMaternityWebhookUrl() {
+    const input = document.getElementById('maternity-webhook-input');
+    const url = input ? input.value.trim() : '';
+    this.state.maternityWebhookUrl = url;
+    localStorage.setItem('maternity_sheet_webhook', url);
+
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      try {
+        await this.state.firestoreDb.collection('settings').doc('maternity_sheet_sync').set({
+          webhook_url: url,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {}
+    }
+
+    this.closeMaternitySyncConfigModal();
+    this.showToast('Conector Google Sheets salvo para todos os dispositivos!', 'success');
+  },
+
+  copyAppsScriptSnippet() {
+    const pre = document.getElementById('apps-script-snippet');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent || '').then(() => {
+      this.showToast('Código Apps Script copiado!', 'success');
+    }).catch(() => {
+      this.showToast('Selecione e copie o código manualmente.', 'info');
+    });
   },
 
   renderAvatar(photoUrl) {
@@ -2195,7 +2654,34 @@ const app = {
         });
       }
       await this.loadAllData();
+      // Atualiza a tabela de médicos de plantão agora imediatamente
+      this.calculateNowStatusFromState();
     }
+  },
+
+  requestUndoShiftAction() {
+    if (!this.state.isEditorMode) return;
+    if (!this.state.undoStack || this.state.undoStack.length === 0) return;
+
+    const lastAction = this.state.undoStack[this.state.undoStack.length - 1];
+    const descEl = document.getElementById('confirm-undo-description');
+    if (descEl) {
+      descEl.textContent = `Deseja desfazer a última alteração ("${lastAction.label}")?`;
+    }
+
+    const modal = document.getElementById('modal-confirm-undo');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeUndoConfirmModal() {
+    const modal = document.getElementById('modal-confirm-undo');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  async confirmUndoShiftAction() {
+    this.closeUndoConfirmModal();
+    await this.undoShiftAction();
   },
 
   async undoShiftAction() {
@@ -2208,7 +2694,6 @@ const app = {
       this.state.redoStack.push(action);
       this.updateUndoRedoUI();
       this.renderSpreadsheetView();
-      this.renderDailyView();
       this.showToast(`Desfeito: ${action.label}`, 'info');
     } catch (err) {
       this.state.undoStack.push(action);

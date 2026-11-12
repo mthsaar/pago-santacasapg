@@ -17,7 +17,7 @@
   <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=11">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=11">
   <link rel="manifest" href="/manifest.json?v=11">
-  <link rel="stylesheet" href="/styles.css?v=11">
+  <link rel="stylesheet" href="/styles.css?v=13">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -168,12 +168,9 @@
             <i data-lucide="calendar" class="w-4 h-4"></i>
             <span>Escala</span>
           </button>
-          <button onclick="app.switchView('now')" id="tab-now" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
-            <span class="live-dot-wrapper">
-              <span class="live-dot-ping"></span>
-              <span class="live-dot-core"></span>
-            </span>
-            <span>Plantão Agora</span>
+          <button onclick="app.switchView('maternity')" id="tab-maternity" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
+            <i data-lucide="bed-double" class="w-4 h-4"></i>
+            <span>Pacientes</span>
           </button>
           <button onclick="app.switchView('doctors')" id="tab-doctors" class="view-tab flex items-center gap-2 px-5 py-2 rounded-full transition-all">
             <i data-lucide="users" class="w-4 h-4"></i>
@@ -222,22 +219,21 @@
       </div>
     </div>
 
-    <!-- ================= 1. ABA: ESCALA (SEMANAL + DIÁRIA INTEGRADA) ================= -->
+    <!-- ================= 1. ABA: ESCALA (SOMENTE MODO SEMANAL + PLANTÃO AGORA ABAIXO) ================= -->
     <section id="view-spreadsheet" class="view-section space-y-3">
 
-      <!-- Barra de Controle da Escala (Título "Escala" + Seletor Semana/Dia próximo às setas) -->
+      <!-- Barra de Controle da Escala (Sem quadrado "Escala" antes do mês e sem modo "Dia") -->
       <div class="m3-card px-3.5 py-2.5 sm:px-5 sm:py-3.5 flex flex-col gap-2.5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           
-          <!-- Identidade + Título "Escala" e Período -->
+          <!-- Nome do Mês e Setas de Mês -->
           <div class="flex items-center gap-2 sm:gap-3">
             <div class="flex items-center gap-1">
-              <button onclick="app.handlePeriodPrev()" title="Período anterior" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+              <button onclick="app.prevMonth()" title="Mês anterior" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
                 <i data-lucide="chevron-left" class="w-5 h-5"></i>
               </button>
               <div class="text-left px-1">
                 <div class="flex items-center gap-2">
-                  <span class="text-[11px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-brand-100 text-brand-800">Escala</span>
                   <h2 id="calendar-month-title" class="text-base sm:text-xl font-extrabold tracking-tight text-brand-950 capitalize leading-tight">
                     Novembro 2026
                   </h2>
@@ -246,40 +242,26 @@
                   Deslize para navegar entre as semanas
                 </p>
               </div>
-              <button onclick="app.handlePeriodNext()" title="Próximo período" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
+              <button onclick="app.nextMonth()" title="Próximo mês" class="w-8 h-8 flex items-center justify-center hover:bg-m3-container rounded-full text-brand-950 transition">
                 <i data-lucide="chevron-right" class="w-5 h-5"></i>
               </button>
             </div>
           </div>
 
-          <!-- Modo de Visualização (Semana | Dia) PRÓXIMO ÀS SETAS -->
+          <!-- Botão Hoje (texto visível também no mobile) + Setas de Semana -->
           <div class="flex items-center gap-1.5 sm:gap-2 ml-auto">
-            <!-- Switch de Modo de Visualização: Semana vs Dia -->
-            <div class="inline-flex items-center bg-m3-container p-0.5 rounded-full border border-m3-outlineVariant/50">
-              <button type="button" id="escala-mode-week" onclick="app.setEscalaSubMode('week')"
-                      class="px-3 py-1 rounded-full text-xs font-extrabold transition-all bg-brand-700 text-white shadow-sm">
-                Semana
-              </button>
-              <button type="button" id="escala-mode-day" onclick="app.setEscalaSubMode('day')"
-                      class="px-3 py-1 rounded-full text-xs font-bold transition-all text-slate-600 hover:text-brand-950">
-                Dia
-              </button>
-            </div>
-
-            <!-- Botão Hoje -->
             <button onclick="app.handleTodayClick()" title="Ir para hoje"
-                    class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-brand-100 hover:bg-brand-200 text-brand-950 text-xs font-extrabold transition">
+                    class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-100 hover:bg-brand-200 text-brand-950 text-xs font-extrabold transition">
               <i data-lucide="calendar-check-2" class="w-3.5 h-3.5 text-brand-700"></i>
-              <span class="hidden sm:inline">Hoje</span>
+              <span>Hoje</span>
             </button>
 
-            <!-- Setas de Navegação Rápida (Semana ou Dia) -->
             <div class="flex items-center bg-m3-container rounded-full p-0.5">
-              <button onclick="app.handleArrowPrev()" title="Anterior"
+              <button onclick="app.prevWeek()" title="Semana anterior"
                       class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
                 <i data-lucide="arrow-left" class="w-4 h-4"></i>
               </button>
-              <button onclick="app.handleArrowNext()" title="Próximo"
+              <button onclick="app.nextWeek()" title="Próxima semana"
                       class="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full hover:bg-white text-brand-950 transition">
                 <i data-lucide="arrow-right" class="w-4 h-4"></i>
               </button>
@@ -287,17 +269,9 @@
           </div>
         </div>
 
-        <!-- Sub-barra de Pílulas de Semanas (no modo Semana) OU Seletor de Data (no modo Dia) -->
+        <!-- Sub-barra de Pílulas de Semanas -->
         <div class="flex items-center justify-between gap-2 pt-1 border-t border-m3-outlineVariant/30">
-          <!-- Pílulas das semanas -->
           <div id="week-nav-pills" class="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5"></div>
-
-          <!-- Seletor direto de data (exibido no modo Dia) -->
-          <div id="day-picker-bar" class="hidden flex items-center gap-2 py-0.5">
-            <span class="text-xs font-bold text-slate-500">Selecionar data:</span>
-            <input type="date" id="daily-picker" onchange="app.selectDate(this.value)" 
-                   class="text-xs bg-m3-containerLow border border-m3-outlineVariant rounded-full px-3 py-1 font-bold text-brand-950">
-          </div>
 
           <!-- Legenda Compacta Padronizada (Desktop) -->
           <div class="hidden lg:flex items-center gap-2 text-[11px] font-semibold text-slate-600 shrink-0 ml-auto">
@@ -321,7 +295,7 @@
       <div id="escala-toolbar-above-table" class="m3-card px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 bg-white">
         <!-- Grupo Desfazer / Avançar (Exibido APENAS no Modo Editor) -->
         <div id="editor-undo-redo-bar" class="hidden flex items-center gap-1.5">
-          <button type="button" id="btn-undo-shift" onclick="app.undoShiftAction()" disabled
+          <button type="button" id="btn-undo-shift" onclick="app.requestUndoShiftAction()" disabled
                   title="Desfazer última alteração na escala (Ctrl+Z)"
                   class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition disabled:opacity-40 disabled:pointer-events-none">
             <i data-lucide="undo-2" class="w-3.5 h-3.5 text-brand-700"></i>
@@ -357,7 +331,7 @@
         </div>
       </div>
 
-      <!-- MODO 1: PLANILHA ÚNICA COM SEMANAS ESCROLÁVEIS (GOOGLE CALENDAR WEEK VIEW) -->
+      <!-- PLANILHA SEMANAL ESCROLÁVEL -->
       <div id="escala-week-wrapper" class="m3-card overflow-hidden">
         <div id="calendar-table-container"></div>
 
@@ -375,76 +349,150 @@
         </div>
       </div>
 
-      <!-- MODO 2: VISÃO DIÁRIA INTEGRADA DENTRO DE ESCALA -->
-      <div id="escala-day-wrapper" class="hidden space-y-3">
-        <div id="daily-slots-container" class="space-y-3"></div>
+      <!-- BLOCO SEPARADO LOGO ABAIXO DA TABELA DA ESCALA: MÉDICOS DE PLANTÃO AGORA -->
+      <div id="oncall-now-block" class="m3-card overflow-hidden">
+        <div class="px-4 py-3 bg-gradient-to-r from-brand-800 via-brand-700 to-brand-950 text-white flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <span class="live-dot-wrapper">
+              <span class="live-dot-ping"></span>
+              <span class="live-dot-core"></span>
+            </span>
+            <div>
+              <h3 class="text-sm sm:text-base font-extrabold tracking-tight leading-tight">Médicos de Plantão Agora</h3>
+              <p id="now-shift-badge" class="text-[11px] text-brand-100 font-semibold leading-none mt-0.5">Turno Ativo</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 text-[11px] bg-white/10 px-3 py-1 rounded-full border border-white/15">
+            <i data-lucide="hourglass" class="w-3.5 h-3.5 text-emerald-300"></i>
+            <span class="text-brand-100">Próx. troca: <strong id="now-next-handover" class="text-white">19:00 ou 07:00</strong></span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs sm:text-sm select-none">
+            <thead class="bg-[#E8ECF7] text-brand-950 font-bold uppercase tracking-wider text-[10px] sm:text-[11px]">
+              <tr>
+                <th class="px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/60 w-32 sm:w-44">Horário / Função</th>
+                <th class="px-3.5 py-2.5 border-b border-r border-m3-outlineVariant/60">Profissional em Plantão</th>
+                <th class="px-3.5 py-2.5 border-b border-m3-outlineVariant/60 text-right">Contato Rápido</th>
+              </tr>
+            </thead>
+            <tbody id="now-doctors-table-body" class="divide-y divide-m3-outlineVariant/40 text-slate-700"></tbody>
+          </table>
+        </div>
       </div>
 
     </section>
 
-    <!-- ================= 2. ABA: PLANTÃO AGORA ================= -->
-    <section id="view-now" class="view-section space-y-5 hidden">
-      
-      <!-- Hero Card Material 3 Expressive com Paleta Santa Casa PG -->
-      <div class="bg-gradient-to-br from-brand-800 via-brand-700 to-brand-950 rounded-m3-xl p-5 sm:p-7 text-white shadow-xl relative overflow-hidden">
-        <div class="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-scred-600/20 blur-2xl pointer-events-none"></div>
-        <div class="absolute -left-10 -bottom-10 w-44 h-44 rounded-full bg-brand-400/20 blur-2xl pointer-events-none"></div>
-
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div class="flex flex-wrap items-center gap-2 mb-3">
-              <!-- Pílula EM ATENDIMENTO AGORA com Ponto Verde Perfeitamente Alinhado -->
-              <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 leading-none">
-                <span class="live-dot-wrapper">
-                  <span class="live-dot-ping"></span>
-                  <span class="live-dot-core"></span>
-                </span>
-                <span>EM ATENDIMENTO AGORA</span>
-              </span>
-
-              <span id="now-shift-badge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-white/15 text-brand-100 leading-none">
-                Turno Atual
-              </span>
-            </div>
-
-            <h2 id="now-shift-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Equipe Plantonista em Serviço
+    <!-- ================= 2. ABA: PACIENTES NA MATERNIDADE (PASSAGEM DE PLANTÃO - GOOGLE SHEETS + FIREBASE) ================= -->
+    <section id="view-maternity" class="view-section space-y-3 hidden">
+      <!-- Cabeçalho da Tabela de Pacientes da Maternidade -->
+      <div class="m3-card px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="live-dot-wrapper">
+              <span class="live-dot-ping"></span>
+              <span class="live-dot-core"></span>
+            </span>
+            <h2 class="text-base sm:text-lg font-extrabold text-brand-950 tracking-tight">
+              Passagem de Plantão • Maternidade
             </h2>
-            <p id="now-shift-subtitle" class="text-brand-100 text-xs sm:text-sm mt-1 font-medium">
-              Santa Casa de Ponta Grossa • Maternidade (Trocas às 07:00 e 19:00)
-            </p>
+            <span id="maternity-occupied-badge" class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-brand-100 text-brand-800">
+              Carregando...
+            </span>
           </div>
+          <p id="maternity-sync-status" class="text-[11px] text-slate-500 font-semibold mt-0.5">
+            Sincronizado em tempo real (Firebase + Planilha Google Docs)
+          </p>
+        </div>
 
-          <div class="bg-white/10 backdrop-blur-md rounded-2xl p-3.5 border border-white/15 flex items-center gap-3.5 self-start md:self-auto">
-            <div class="w-11 h-11 rounded-2xl bg-scred-600 flex items-center justify-center text-white shadow-md shrink-0">
-              <i data-lucide="hourglass" class="w-5 h-5"></i>
-            </div>
-            <div>
-              <p class="text-[11px] text-brand-100 font-semibold uppercase tracking-wider">Próxima Passagem</p>
-              <p id="now-next-handover" class="text-base sm:text-lg font-extrabold text-white">19:00 ou 07:00</p>
-            </div>
-          </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button type="button" onclick="app.syncMaternityFromGoogleSheet(true)"
+                  title="Sincronizar agora com a planilha do Google Docs"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Sincronizar</span>
+          </button>
+
+          <a href="https://docs.google.com/spreadsheets/d/1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0/edit?gid=0#gid=0"
+             target="_blank" rel="noopener"
+             title="Abrir planilha original no Google Sheets"
+             class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            <span>Planilha Google</span>
+          </a>
+
+          <button type="button" onclick="app.openMaternitySyncConfigModal()"
+                  title="Configurar conector de escrita automática na Planilha Google"
+                  class="flex items-center justify-center w-8 h-8 rounded-full bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
+            <i data-lucide="link-2" class="w-3.5 h-3.5 text-brand-700"></i>
+          </button>
         </div>
       </div>
 
-      <!-- ROTINEIRO DA MANHÃ (Exibido APENAS entre 07h e 13h) -->
-      <div id="now-routine-container"></div>
-
-      <!-- MÉDICOS DO PLANTÃO ATUAL -->
-      <div>
-        <div class="flex items-center justify-between mb-3 px-1">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
-              <i data-lucide="stethoscope" class="w-4 h-4"></i>
-            </div>
-            <h3 class="text-base sm:text-lg font-extrabold text-brand-950">Plantonistas Escalados</h3>
-          </div>
-          <span class="text-xs font-semibold text-slate-500">Toque no médico para detalhes</span>
+      <!-- TABELA DE PACIENTES COM ESCROLAGEM VERTICAL E HORIZONTAL (MESMO ESTILO DA ESCALA) -->
+      <div class="m3-card overflow-hidden">
+        <div id="maternity-scroll-viewport" class="maternity-scroll-container custom-scrollbar" onscroll="app.handleMaternityScroll(this)">
+          <table class="maternity-table text-left text-xs select-none">
+            <thead class="bg-[#E8ECF7] text-brand-950 font-extrabold uppercase tracking-wider text-[10px] sm:text-[11px]">
+              <tr>
+                <th class="sticky-maternity-corner bg-[#E8ECF7] px-2.5 py-2.5 border-r border-b border-m3-outlineVariant/80 text-center">
+                  LEITO
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[170px]">
+                  NOME
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[110px]">
+                  PARIDADE
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[130px]">
+                  ALTO RISCO
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[170px]">
+                  INTERNAÇÃO POR
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-b border-m3-outlineVariant/60 min-w-[260px]">
+                  OBSERVAÇÕES
+                </th>
+              </tr>
+            </thead>
+            <tbody id="maternity-table-body" class="text-slate-800"></tbody>
+          </table>
         </div>
 
-        <div id="now-doctors-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <!-- Barra de Progresso de Rolagem Horizontal (Tabela da Maternidade) -->
+        <div class="px-3.5 py-2 bg-m3-containerLow/90 border-t border-m3-outlineVariant/50 flex items-center gap-3">
+          <div class="flex items-center gap-1 text-[10px] font-extrabold text-brand-700 uppercase tracking-wider shrink-0">
+            <i data-lucide="move" class="w-3.5 h-3.5"></i>
+            <span>Role V/H</span>
+          </div>
+          <div id="maternity-scroll-track" onclick="app.handleTrackClick(event, 'maternity-scroll-viewport')"
+               class="relative flex-1 h-2 bg-brand-100 rounded-full overflow-hidden cursor-pointer">
+            <div id="maternity-scroll-bar" class="h-full bg-gradient-to-r from-brand-600 to-brand-800 rounded-full transition-[width] duration-75" style="width: 25%;"></div>
+          </div>
+          <span id="maternity-scroll-pct" class="text-[10px] font-extrabold text-brand-950 font-mono w-8 text-right shrink-0">25%</span>
+        </div>
       </div>
 
+      <!-- BOTÃO ABAIXO DA TABELA: ADICIONAR EVOLUÇÃO -->
+      <div class="m3-card p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gradient-to-r from-brand-50/70 via-white to-brand-50/70 border border-brand-200">
+        <div class="flex items-center gap-3 text-center sm:text-left">
+          <div class="hidden sm:flex w-10 h-10 rounded-2xl bg-brand-100 text-brand-700 items-center justify-center shrink-0">
+            <i data-lucide="file-plus-2" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-xs sm:text-sm font-extrabold text-brand-950">Evolução e Passagem de Plantão por Leito</h3>
+            <p class="text-[11px] text-slate-600">Selecione o quarto (Coluna A) ou toque diretamente em uma linha da tabela para preencher os dados da paciente</p>
+          </div>
+        </div>
+
+        <button type="button" onclick="app.openMaternityEvolutionModal()"
+                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-extrabold shadow-md transition shrink-0 cursor-pointer">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i>
+          <span>Adicionar evolução</span>
+        </button>
+      </div>
     </section>
 
     <!-- ================= 3. ABA: CORPO CLÍNICO ================= -->
@@ -534,12 +582,11 @@
       <span class="text-[11px] font-extrabold text-brand-950 leading-none">Escala</span>
     </button>
 
-    <button onclick="app.switchView('now')" id="bnav-now" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
+    <button onclick="app.switchView('maternity')" id="bnav-maternity" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
       <div class="bnav-pill m3-pill-indicator w-16 h-8 rounded-full flex items-center justify-center text-slate-600 relative">
-        <i data-lucide="activity" class="w-5 h-5"></i>
-        <span class="absolute top-1 right-4 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-m3-containerLow"></span>
+        <i data-lucide="bed-double" class="w-5 h-5"></i>
       </div>
-      <span class="text-[11px] font-semibold text-slate-600 leading-none">Agora</span>
+      <span class="text-[11px] font-semibold text-slate-600 leading-none">Pacientes</span>
     </button>
 
     <button onclick="app.switchView('doctors')" id="bnav-doctors" class="bnav-btn group flex flex-col items-center gap-1 py-1 flex-1">
@@ -889,14 +936,192 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: CONFIRMAÇÃO "DESEJA DESFAZER?" ================= -->
+  <div id="modal-confirm-undo" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-sm w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="undo-2" class="w-7 h-7"></i>
+      </div>
+      <h3 class="text-lg font-extrabold text-brand-950">Deseja desfazer?</h3>
+      <p id="confirm-undo-description" class="text-xs text-slate-600 mt-1.5 mb-5 font-medium">
+        A última alteração realizada na escala será revertida.
+      </p>
+
+      <div class="flex items-center gap-2.5">
+        <button type="button" onclick="app.closeUndoConfirmModal()"
+                class="flex-1 py-2.5 text-xs font-bold text-slate-600 bg-m3-containerLow hover:bg-m3-container rounded-full transition">
+          Cancelar
+        </button>
+        <button type="button" onclick="app.confirmUndoShiftAction()"
+                class="flex-1 py-2.5 text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition">
+          Sim, desfazer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: ADICIONAR / EDITAR EVOLUÇÃO DA MATERNIDADE (LINHA 2 DO GOOGLE SHEETS) ================= -->
+  <div id="modal-maternity-evolution" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active max-h-[92vh] flex flex-col">
+      <div class="px-6 py-4 bg-gradient-to-r from-brand-800 to-brand-950 text-white flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="file-plus-2" class="w-5 h-5 text-emerald-300"></i>
+          <div>
+            <h3 class="font-extrabold text-sm sm:text-base leading-tight">Adicionar Evolução • Maternidade</h3>
+            <p class="text-[11px] text-brand-100">Salva em tempo real no App e envia para a planilha do Google Docs</p>
+          </div>
+        </div>
+        <button type="button" onclick="app.closeMaternityEvolutionModal()" class="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="app.handleSaveMaternityEvolution(event)" class="p-5 sm:p-6 space-y-3.5 overflow-y-auto flex-1">
+        <!-- Seleção do Quarto / Leito (Coluna A) -->
+        <div>
+          <label class="block text-xs font-extrabold text-brand-950 mb-1">
+            Quarto / Leito (Coluna A) *
+          </label>
+          <select id="evo-select-leito" required onchange="app.handleEvolutionLeitoChange(this.value)"
+                  class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </select>
+        </div>
+
+        <!-- Campos correspondentes à Linha 2 da Planilha: NOME, PARIDADE, ALTO RISCO, INTERNAÇÃO POR, OBSERVAÇÕES -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">NOME (Coluna B)</label>
+            <input type="text" id="evo-input-nome" placeholder="Nome completo da paciente"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">PARIDADE (Coluna C)</label>
+            <input type="text" id="evo-input-paridade" placeholder="Ex: G2 P1 A0 • IG 39s"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">ALTO RISCO (Coluna D)</label>
+            <input type="text" id="evo-input-altorisco" placeholder="Ex: Não / Sim (DMG, DHEG...)"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">INTERNAÇÃO POR (Coluna E)</label>
+            <input type="text" id="evo-input-internacao" placeholder="Motivo da internação / diagnóstico obstétrico"
+                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-slate-700 mb-1">OBSERVAÇÕES / EVOLUÇÃO (Coluna F)</label>
+            <textarea id="evo-input-observacoes" rows="3" placeholder="Evolução clínica, dilatação, exames, conduta e pendências para o plantão..."
+                      class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none"></textarea>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+          <button type="button" onclick="app.clearMaternityBed()"
+                  class="text-xs text-scred-600 hover:text-scred-800 font-bold px-3 py-2 rounded-full hover:bg-scred-50 flex items-center gap-1 transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Limpar Leito (Alta)</span>
+          </button>
+
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" onclick="app.closeMaternityEvolutionModal()"
+                    class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+              Cancelar
+            </button>
+            <button type="submit" id="btn-save-evolution"
+                    class="px-5 py-2.5 text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow-md transition flex items-center gap-1.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              <span>Salvar Evolução</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: CONFIGURAÇÃO DE ESCRITA DIRETA NO GOOGLE SHEETS ================= -->
+  <div id="modal-maternity-sync-config" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active p-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <div class="flex items-center gap-2">
+          <i data-lucide="link-2" class="w-5 h-5 text-brand-700"></i>
+          <h3 class="font-extrabold text-brand-950 text-sm sm:text-base">Integração Bidirecional Google Sheets</h3>
+        </div>
+        <button type="button" onclick="app.closeMaternitySyncConfigModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs text-slate-600">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 text-emerald-950">
+          <p class="font-extrabold">✓ Leitura em tempo real ativa</p>
+          <p class="mt-0.5 text-[11px]">O aplicativo já lê automaticamente a planilha do Google Docs a cada 10 segundos e sincroniza instantaneamente com o Firebase.</p>
+        </div>
+
+        <div class="bg-m3-containerLow border border-m3-outlineVariant/60 rounded-2xl p-3.5 space-y-2">
+          <label class="block font-extrabold text-brand-950">URL do Web App Google Apps Script (Para gravação automática no Google Docs):</label>
+          <input type="url" id="maternity-webhook-input" placeholder="https://script.google.com/macros/s/.../exec"
+                 class="w-full bg-white border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            Para permitir que o salvamento no app edite diretamente as células da planilha no Google Docs sem exigir login Google individual em cada celular:
+            abra a planilha → <strong>Extensões &gt; Apps Script</strong> → cole o código abaixo → clique em <strong>Implantar &gt; Nova implantação &gt; App da Web</strong> (Acesso: <em>Qualquer pessoa</em>) e cole a URL gerada acima.
+          </p>
+          <div class="relative">
+            <pre id="apps-script-snippet" class="bg-slate-900 text-slate-100 p-3 rounded-xl text-[10px] font-mono overflow-x-auto leading-relaxed">function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.openById('1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0');
+  var sheet = ss.getSheets()[0];
+  var values = sheet.getDataRange().getValues();
+  var target = String(data.leito || '').trim().toUpperCase();
+  for (var i = 2; i &lt; values.length; i++) {
+    if (String(values[i][0] || '').trim().toUpperCase() === target) {
+      sheet.getRange(i + 1, 2, 1, 5).setValues([[
+        data.nome || '',
+        data.paridade || '',
+        data.alto_risco || '',
+        data.internacao_por || '',
+        data.observacoes || ''
+      ]]);
+      return ContentService.createTextOutput(JSON.stringify({ok: true}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify({ok: false}))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+            <button type="button" onclick="app.copyAppsScriptSnippet()"
+                    class="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[10px] font-bold transition">
+              Copiar código
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="app.closeMaternitySyncConfigModal()"
+                  class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+            Fechar
+          </button>
+          <button type="button" onclick="app.saveMaternityWebhookUrl()"
+                  class="px-5 py-2 text-xs font-extrabold bg-brand-700 hover:bg-brand-800 text-white rounded-full shadow transition">
+            Salvar Conector
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=12"></script>
-  <script src="/app.js?v=12"></script>
+  <script src="/initial-data.js?v=13"></script>
+  <script src="/app.js?v=13"></script>
   <script>
-    const CURRENT_APP_VERSION = "v12-202611121530";
+    const CURRENT_APP_VERSION = "v13-202611121600";
 
     async function checkAndApplyWebAppUpdate() {
       try {
