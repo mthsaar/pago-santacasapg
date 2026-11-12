@@ -64,7 +64,13 @@ const app = {
       professionals: false,
       patients: false
     },
-    maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || ''
+    maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || '',
+    shiftReminderConfig: {
+      enabled: localStorage.getItem('shift_reminder_enabled') !== 'false',
+      channel: localStorage.getItem('shift_reminder_channel') || 'whatsapp',
+      webhook_url: localStorage.getItem('shift_reminder_webhook') || ''
+    },
+    sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}')
   },
 
   async init() {
@@ -82,10 +88,12 @@ const app = {
     this.startClockAndCountdown();
     this.populateEvolutionLeitoSelect();
     this.renderMaternityView();
+    this.updateReminderActiveDot();
 
     await this.initFirebase();
     await this.loadAllData();
     this.syncMaternityFromGoogleSheet();
+    this.checkAndTriggerOneHourShiftReminders();
 
     this.switchView(this.state.currentView);
 
@@ -109,6 +117,7 @@ const app = {
 
     setInterval(() => {
       this.loadNowStatus();
+      this.checkAndTriggerOneHourShiftReminders();
     }, 60000);
 
     setInterval(() => {
@@ -217,14 +226,72 @@ const app = {
         }
       }
     });
+
+    this.state.firestoreDb.collection('settings').doc('shift_reminders').onSnapshot(doc => {
+      if (doc && doc.exists) {
+        const data = doc.data();
+        if (data) {
+          this.state.shiftReminderConfig = {
+            enabled: data.enabled !== false,
+            channel: data.channel || 'whatsapp',
+            webhook_url: data.webhook_url || ''
+          };
+          localStorage.setItem('shift_reminder_enabled', String(this.state.shiftReminderConfig.enabled));
+          localStorage.setItem('shift_reminder_channel', this.state.shiftReminderConfig.channel);
+          localStorage.setItem('shift_reminder_webhook', this.state.shiftReminderConfig.webhook_url);
+          this.updateReminderActiveDot();
+        }
+      }
+    });
+  },
+
+  formatMonthYearPT(monthStr) {
+    if (!monthStr || !monthStr.includes('-')) return monthStr;
+    const [y, m] = monthStr.split('-');
+    const names = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const mIdx = Math.max(0, Math.min(11, parseInt(m, 10) - 1));
+    return `${names[mIdx]} de ${y}`;
+  },
+
+  ensureStatsMonthOption(monthStr) {
+    const statsPicker = document.getElementById('stats-month-picker');
+    if (!statsPicker || !monthStr) return;
+    let opt = Array.from(statsPicker.options || []).find(o => o.value === monthStr);
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = monthStr;
+      opt.textContent = this.formatMonthYearPT(monthStr);
+      statsPicker.appendChild(opt);
+    }
+    statsPicker.value = monthStr;
+  },
+
+  stepStatsMonth(delta) {
+    const statsPicker = document.getElementById('stats-month-picker');
+    const curVal = (statsPicker && statsPicker.value) ? statsPicker.value : this.state.currentMonth;
+    const [yStr, mStr] = curVal.split('-');
+    let year = parseInt(yStr, 10);
+    let month = parseInt(mStr, 10) + delta;
+    if (month < 1) {
+      month = 12;
+      year -= 1;
+    } else if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    const nextMonthStr = `${year}-${String(month).padStart(2, '0')}`;
+    this.ensureStatsMonthOption(nextMonthStr);
+    this.loadStats(nextMonthStr);
   },
 
   setupDatePickers() {
     const dailyPicker = document.getElementById('daily-picker');
     if (dailyPicker) dailyPicker.value = this.state.selectedDate;
 
-    const statsPicker = document.getElementById('stats-month-picker');
-    if (statsPicker) statsPicker.value = this.state.currentMonth;
+    this.ensureStatsMonthOption(this.state.currentMonth);
   },
 
   updateDoctorsCount() {
@@ -1879,6 +1946,433 @@ const app = {
     if (modal) modal.classList.add('hidden');
   },
 
+  // ================= BUSCA DE PACIENTE NA MATERNIDADE =================
+  openMaternityPatientSearchModal() {
+    const modal = document.getElementById('modal-maternity-search');
+    const input = document.getElementById('maternity-patient-search-input');
+    if (input) input.value = '';
+    this.renderMaternityPatientSearchResults('');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+    setTimeout(() => {
+      if (input) input.focus();
+    }, 60);
+  },
+
+  closeMaternityPatientSearchModal() {
+    const modal = document.getElementById('modal-maternity-search');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  selectPatientFromSearch(leito) {
+    this.closeMaternityPatientSearchModal();
+    this.openMaternityEvolutionModal(leito);
+  },
+
+  renderMaternityPatientSearchResults(query = '') {
+    const resultsEl = document.getElementById('maternity-patient-search-results');
+    if (!resultsEl) return;
+
+    const q = String(query || '').trim().toLowerCase();
+    const groups = this.getAllMaternityGroups();
+    const matches = [];
+
+    groups.forEach(group => {
+      group.beds.forEach(leito => {
+        const data = this.getMaternityBedData(leito);
+        const isOccupied = Boolean(
+          (data.nome && data.nome.trim() !== '') ||
+          (data.internacao_por && data.internacao_por.trim() !== '') ||
+          (data.observacoes && data.observacoes.trim() !== '')
+        );
+
+        if (!q && !isOccupied) return;
+
+        const haystack = `${leito} ${data.nome || ''} ${data.paridade || ''} ${data.alto_risco || ''} ${data.internacao_por || ''} ${data.observacoes || ''}`.toLowerCase();
+        if (!q || haystack.includes(q)) {
+          matches.push({
+            leito,
+            groupTitle: group.title,
+            isOccupied,
+            ...data
+          });
+        }
+      });
+    });
+
+    if (matches.length === 0) {
+      resultsEl.innerHTML = `
+        <div class="py-8 text-center text-xs text-slate-400 font-semibold">
+          Nenhuma paciente ou leito encontrado para "${this.escapeHtml(query)}".
+        </div>
+      `;
+      return;
+    }
+
+    resultsEl.innerHTML = matches.map(item => {
+      const safeLeitoAttr = item.leito.replace(/'/g, "\\'");
+      const riskVal = (item.alto_risco || '').trim();
+      const isHighRisk = Boolean(
+        riskVal !== '' &&
+        !['não', 'nao', 'n', '-', 'baixo', 'habitual'].includes(riskVal.toLowerCase())
+      );
+
+      return `
+        <div onclick="app.selectPatientFromSearch('${safeLeitoAttr}')"
+             class="p-3 hover:bg-scred-50/40 rounded-2xl cursor-pointer transition flex items-center justify-between gap-3 group">
+          <div class="flex items-start gap-3 min-w-0">
+            <div class="px-2.5 py-1.5 rounded-xl ${item.isOccupied ? 'bg-scred-100 text-scred-800 border border-scred-200' : 'bg-m3-container text-slate-600'} font-extrabold text-xs shrink-0 text-center min-w-[54px]">
+              ${this.escapeHtml(item.leito)}
+            </div>
+            <div class="min-w-0">
+              <div class="font-extrabold text-brand-950 text-xs sm:text-sm group-hover:text-scred-700 truncate">
+                ${item.nome ? this.escapeHtml(item.nome) : '<span class="text-slate-400 italic font-medium">Leito Livre</span>'}
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px] text-slate-600">
+                ${item.paridade ? `<span class="font-bold text-brand-800">${this.escapeHtml(item.paridade)}</span>` : ''}
+                ${riskVal ? `<span class="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${isHighRisk ? 'bg-scred-100 text-scred-800' : 'bg-slate-100 text-slate-700'}">${this.escapeHtml(riskVal)}</span>` : ''}
+                ${item.internacao_por ? `<span class="truncate text-slate-500">• ${this.escapeHtml(item.internacao_por)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="w-7 h-7 rounded-full bg-scred-50 text-scred-600 flex items-center justify-center shrink-0 group-hover:bg-scred-600 group-hover:text-white transition">
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+  },
+
+  // ================= POPUP DE DOWNLOAD DO MÊS (PDF / XLSX) =================
+  openDownloadMonthModal() {
+    const modal = document.getElementById('modal-download-month');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeDownloadMonthModal() {
+    const modal = document.getElementById('modal-download-month');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  // ================= AVISO AUTOMÁTICO 1H ANTES DO PLANTÃO (WHATSAPP / SMS) =================
+  updateReminderActiveDot() {
+    const dot = document.getElementById('reminder-active-dot');
+    if (!dot) return;
+    const isEnabled = this.state.shiftReminderConfig && this.state.shiftReminderConfig.enabled;
+    dot.classList.toggle('hidden', !isEnabled);
+  },
+
+  getUpcomingShiftInfo() {
+    const now = new Date();
+    const curHour = now.getHours();
+    const curMin = now.getMinutes();
+    const curTotalMin = curHour * 60 + curMin;
+
+    let targetDate = new Date(now);
+    let shiftTypes = [];
+    let shiftLabel = '';
+    let startTimeStr = '';
+    let minutesUntilStart = 0;
+
+    if (curTotalMin < 7 * 60) {
+      shiftTypes = ['routine', 'morning'];
+      shiftLabel = 'Manhã e Rotina (07h–13h)';
+      startTimeStr = '07:00';
+      minutesUntilStart = 7 * 60 - curTotalMin;
+    } else if (curTotalMin < 13 * 60) {
+      shiftTypes = ['afternoon'];
+      shiftLabel = 'Plantão Tarde (13h–19h)';
+      startTimeStr = '13:00';
+      minutesUntilStart = 13 * 60 - curTotalMin;
+    } else if (curTotalMin < 19 * 60) {
+      shiftTypes = ['evening', 'night'];
+      shiftLabel = 'Plantão Noturno (19h–07h) e Reforço (19h–23h)';
+      startTimeStr = '19:00';
+      minutesUntilStart = 19 * 60 - curTotalMin;
+    } else {
+      targetDate.setDate(targetDate.getDate() + 1);
+      shiftTypes = ['routine', 'morning'];
+      shiftLabel = 'Manhã e Rotina (07h–13h)';
+      startTimeStr = '07:00';
+      minutesUntilStart = (24 * 60 - curTotalMin) + 7 * 60;
+    }
+
+    const yyyy = targetDate.getFullYear();
+    const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(targetDate.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    // Se a data real não tiver plantões (ex: ambiente de visualização em outro mês), usa selectedDate como referência
+    let matchingShifts = this.state.shifts.filter(s => s.date === dateStr && shiftTypes.includes(s.shift_type));
+    let effectiveDateStr = dateStr;
+    if (matchingShifts.length === 0 && this.state.selectedDate) {
+      matchingShifts = this.state.shifts.filter(s => s.date === this.state.selectedDate && shiftTypes.includes(s.shift_type));
+      effectiveDateStr = this.state.selectedDate;
+    }
+
+    const doctorsList = matchingShifts.map(s => {
+      const docObj = this.state.doctors.find(d => String(d.id) === String(s.doctor_id)) || {};
+      const roleMap = {
+        routine: 'Rotineiro (07-13h)',
+        morning: 'Plantão Manhã (07-13h)',
+        afternoon: 'Plantão Tarde (13-19h)',
+        evening: 'Reforço (19-23h)',
+        night: 'Plantão Noturno (19-07h)'
+      };
+      const docName = docObj.name || s.doctor_name || 'Médico(a)';
+      const docPhone = docObj.phone || s.doctor_phone || '';
+      const roleLabel = roleMap[s.shift_type] || shiftLabel;
+      const message = `Olá Dr(a). ${docName}, lembrete automático da Maternidade Santa Casa de Ponta Grossa: seu turno (${roleLabel}) inicia em 1 hora, às ${startTimeStr} (${this.formatDateBR(effectiveDateStr)}). Bom plantão!`;
+
+      return {
+        shift_id: s.id,
+        doctor_id: s.doctor_id,
+        doctor_name: docName,
+        phone: docPhone,
+        role_label: roleLabel,
+        start_time: startTimeStr,
+        date: effectiveDateStr,
+        message
+      };
+    });
+
+    return {
+      dateStr: effectiveDateStr,
+      shiftLabel,
+      startTimeStr,
+      minutesUntilStart,
+      isOneHourWindow: minutesUntilStart >= 45 && minutesUntilStart <= 65,
+      doctors: doctorsList
+    };
+  },
+
+  openShiftReminderModal() {
+    const modal = document.getElementById('modal-shift-reminders');
+    const enabledEl = document.getElementById('reminder-auto-enabled');
+    const channelEl = document.getElementById('reminder-channel-select');
+    const webhookEl = document.getElementById('reminder-webhook-url');
+
+    const cfg = this.state.shiftReminderConfig || {};
+    if (enabledEl) enabledEl.checked = cfg.enabled !== false;
+    if (channelEl) channelEl.value = cfg.channel || 'whatsapp';
+    if (webhookEl) webhookEl.value = cfg.webhook_url || '';
+
+    this.renderShiftReminderModal();
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeShiftReminderModal() {
+    const modal = document.getElementById('modal-shift-reminders');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  renderShiftReminderModal() {
+    const info = this.getUpcomingShiftInfo();
+    const titleEl = document.getElementById('reminder-next-shift-title');
+    const badgeEl = document.getElementById('reminder-next-shift-time-badge');
+    const listEl = document.getElementById('reminder-upcoming-doctors-list');
+
+    if (titleEl) {
+      titleEl.textContent = `${info.shiftLabel} • ${this.formatDateBR(info.dateStr)}`;
+    }
+    if (badgeEl) {
+      const h = Math.floor(info.minutesUntilStart / 60);
+      const m = info.minutesUntilStart % 60;
+      badgeEl.textContent = h > 0 ? `Inicia às ${info.startTimeStr} (em ${h}h${m}m)` : `Inicia às ${info.startTimeStr} (em ${m} min)`;
+    }
+    if (!listEl) return;
+
+    if (info.doctors.length === 0) {
+      listEl.innerHTML = `
+        <div class="p-3 rounded-xl bg-white border border-m3-outlineVariant/50 text-center text-slate-400 font-semibold">
+          Nenhum profissional escalado encontrado para o próximo turno.
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = info.doctors.map(item => {
+      const clean = this.cleanPhone(item.phone);
+      const hasPhone = Boolean(clean && clean.length >= 8);
+      const encodedMsg = encodeURIComponent(item.message);
+      const waLink = hasPhone ? `https://wa.me/55${clean}?text=${encodedMsg}` : '#';
+      const smsLink = hasPhone ? `sms:+55${clean}?&body=${encodedMsg}` : '#';
+
+      return `
+        <div class="p-3 rounded-xl bg-white border border-m3-outlineVariant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div class="min-w-0">
+            <div class="font-extrabold text-brand-950 text-xs sm:text-sm truncate">${this.escapeHtml(item.doctor_name)}</div>
+            <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px]">
+              <span class="font-bold text-scred-700 bg-scred-50 px-2 py-0.2 rounded-full border border-scred-200">${this.escapeHtml(item.role_label)}</span>
+              <span class="font-mono ${hasPhone ? 'text-slate-600 font-bold' : 'text-slate-400 italic'}">${hasPhone ? this.escapeHtml(item.phone) : 'Sem telefone cadastrado'}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1.5 shrink-0">
+            ${hasPhone ? `
+              <a href="${waLink}" target="_blank"
+                 class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-2xs transition">
+                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                <span>WhatsApp</span>
+              </a>
+              <a href="${smsLink}"
+                 class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-[11px] font-extrabold shadow-2xs transition">
+                <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+                <span>SMS</span>
+              </a>
+            ` : `
+              <button type="button" onclick="app.closeShiftReminderModal(); app.openDoctorModal('${item.doctor_id}')"
+                      class="px-2.5 py-1 rounded-full bg-m3-container text-brand-800 text-[11px] font-bold hover:bg-brand-100 transition">
+                Cadastrar nº
+              </button>
+            `}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (window.lucide) lucide.createIcons();
+  },
+
+  async saveShiftReminderConfig(showFeedback = false) {
+    const enabledEl = document.getElementById('reminder-auto-enabled');
+    const channelEl = document.getElementById('reminder-channel-select');
+    const webhookEl = document.getElementById('reminder-webhook-url');
+
+    const cfg = {
+      enabled: enabledEl ? Boolean(enabledEl.checked) : true,
+      channel: channelEl ? channelEl.value : 'whatsapp',
+      webhook_url: webhookEl ? webhookEl.value.trim() : ''
+    };
+
+    this.state.shiftReminderConfig = cfg;
+    localStorage.setItem('shift_reminder_enabled', String(cfg.enabled));
+    localStorage.setItem('shift_reminder_channel', cfg.channel);
+    localStorage.setItem('shift_reminder_webhook', cfg.webhook_url);
+    this.updateReminderActiveDot();
+
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      try {
+        await this.state.firestoreDb.collection('settings').doc('shift_reminders').set({
+          ...cfg,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {}
+    }
+
+    if (showFeedback) {
+      this.showToast('Configuração de lembretes 1h antes salva!', 'success');
+    }
+  },
+
+  async sendShiftReminderPayload(item, channel = 'whatsapp') {
+    const webhookUrl = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.webhook_url || '').trim();
+    if (!webhookUrl) return false;
+
+    const clean = this.cleanPhone(item.phone);
+    if (!clean) return false;
+
+    const payload = {
+      event: 'shift_reminder_1h',
+      channel,
+      doctor_id: item.doctor_id,
+      doctor_name: item.doctor_name,
+      phone: `+55${clean}`,
+      raw_phone: item.phone,
+      shift_label: item.role_label,
+      start_time: item.start_time,
+      date: item.date,
+      message: item.message,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      return true;
+    } catch (e) {
+      console.warn('Erro ao acionar webhook de lembrete:', e);
+      return false;
+    }
+  },
+
+  async checkAndTriggerOneHourShiftReminders() {
+    const cfg = this.state.shiftReminderConfig;
+    if (!cfg || !cfg.enabled) return;
+
+    const info = this.getUpcomingShiftInfo();
+    if (!info.isOneHourWindow || info.doctors.length === 0) return;
+
+    for (const item of info.doctors) {
+      const reminderKey = `${info.dateStr}_${info.startTimeStr}_${item.doctor_id}_${item.role_label}`;
+      if (this.state.sentShiftReminders[reminderKey]) continue;
+
+      const clean = this.cleanPhone(item.phone);
+      if (!clean) continue;
+
+      this.state.sentShiftReminders[reminderKey] = new Date().toISOString();
+      try {
+        localStorage.setItem('sent_shift_reminders', JSON.stringify(this.state.sentShiftReminders));
+      } catch (e) {}
+
+      if (cfg.webhook_url) {
+        await this.sendShiftReminderPayload(item, cfg.channel || 'whatsapp');
+      }
+
+      if (this.state.firebaseActive && this.state.firestoreDb) {
+        this.state.firestoreDb.collection('shift_reminders_sent').doc(reminderKey.replace(/[^a-zA-Z0-9_-]/g, '_')).set({
+          doctor_name: item.doctor_name,
+          phone: item.phone,
+          role_label: item.role_label,
+          date: info.dateStr,
+          start_time: info.startTimeStr,
+          sent_at: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+
+      this.showToast(`Lembrete de 1h (${item.start_time}): Dr(a). ${item.doctor_name}`, 'info');
+    }
+  },
+
+  async testShiftReminderWebhook() {
+    await this.saveShiftReminderConfig(false);
+    const info = this.getUpcomingShiftInfo();
+    const withPhone = info.doctors.filter(d => this.cleanPhone(d.phone).length >= 8);
+
+    if (withPhone.length === 0) {
+      this.showToast('Cadastre o telefone de ao menos um médico do próximo turno para testar.', 'info');
+      return;
+    }
+
+    const cfg = this.state.shiftReminderConfig || {};
+    if (cfg.webhook_url) {
+      let sentCount = 0;
+      for (const item of withPhone) {
+        const ok = await this.sendShiftReminderPayload(item, cfg.channel || 'whatsapp');
+        if (ok) sentCount++;
+      }
+      this.showToast(`Disparo enviado ao gateway para ${sentCount} médico(s) do próximo turno!`, 'success');
+    } else {
+      const first = withPhone[0];
+      const clean = this.cleanPhone(first.phone);
+      const encodedMsg = encodeURIComponent(first.message);
+      if (cfg.channel === 'sms') {
+        window.location.href = `sms:+55${clean}?&body=${encodedMsg}`;
+      } else {
+        window.open(`https://wa.me/55${clean}?text=${encodedMsg}`, '_blank');
+      }
+      this.showToast(`Abrindo mensagem de lembrete para Dr(a). ${first.doctor_name}`, 'success');
+    }
+  },
+
   handleEvolutionLeitoChange(leito) {
     const data = this.getMaternityBedData(leito);
     const nomeEl = document.getElementById('evo-input-nome');
@@ -2258,6 +2752,7 @@ const app = {
 
   async loadStats(monthStr) {
     try {
+      this.ensureStatsMonthOption(monthStr);
       const stats = this.state.doctors.map(doc => {
         const docShifts = this.state.shifts.filter(s => String(s.doctor_id) === String(doc.id) && s.date.startsWith(monthStr));
         const turnos_6h = docShifts.filter(s => s.shift_type === 'morning' || s.shift_type === 'afternoon').length;
@@ -2650,7 +3145,7 @@ const app = {
         <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 flex flex-col justify-between">
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Taxa de Ocupação Atual</span>
-            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <div class="w-8 h-8 rounded-xl bg-scred-100 text-scred-600 flex items-center justify-center shrink-0">
               <i data-lucide="bed" class="w-4 h-4"></i>
             </div>
           </div>
@@ -2659,7 +3154,7 @@ const app = {
               ${occupancyPct}% <span class="text-xs font-bold text-slate-500">(${occupiedBeds}/${totalBeds})</span>
             </div>
             <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden mt-2">
-              <div class="h-full rounded-full bg-emerald-600 transition-all" style="width: ${Math.min(100, occupancyPct)}%"></div>
+              <div class="h-full rounded-full bg-scred-600 transition-all" style="width: ${Math.min(100, occupancyPct)}%"></div>
             </div>
           </div>
         </div>
@@ -2754,10 +3249,10 @@ const app = {
           <div>
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
-                <i data-lucide="clipboard-list" class="w-4 h-4 text-emerald-700"></i>
+                <i data-lucide="clipboard-list" class="w-4 h-4 text-scred-600"></i>
                 <h5 class="font-extrabold text-brand-950 text-xs sm:text-sm uppercase tracking-wide">Motivos de Internação</h5>
               </div>
-              <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-scred-50 text-scred-800 border border-scred-200">
                 Desfechos
               </span>
             </div>
