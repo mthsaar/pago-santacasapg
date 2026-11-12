@@ -410,7 +410,7 @@ body {
    SELETOR DE PARIDADE ESTILO ALARME (ROLAGEM VERTICAL 0 A 20)
    ========================================================================== */
 .alarm-wheel-scroll {
-  max-height: 176px;
+  max-height: 220px;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   -webkit-overflow-scrolling: touch;
@@ -420,4 +420,76 @@ body {
 .alarm-wheel-item {
   scroll-snap-align: center;
   transition: all 0.15s ease;
+}
+
+/* ==========================================================================
+   CONTENÇÃO DE INPUTS NATIVOS DE DATA E HORA (iOS SAFARI / MOBILE / WEB)
+   Impede que <input type="date"> e <input type="time"> ultrapassem a janela
+   ou fiquem sobrepostos na versão mobile
+   ========================================================================== */
+input[type="date"],
+input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* ==========================================================================
+   TIPOGRAFIA AMPLIADA E LEGIBILIDADE REFORÇADA NO MODO MOBILE (< 768px)
+   ========================================================================== */
+@media (max-width: 767px) {
+  body {
+    font-size: 15px;
+  }
+
+  /* Textos utilitários pequenos ficam maiores e mais legíveis no celular */
+  .text-\[10px\] {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+
+  .text-\[11px\] {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+  }
+
+  .text-xs {
+    font-size: 13.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  .text-sm {
+    font-size: 15px !important;
+    line-height: 1.45 !important;
+  }
+
+  /* Tabelas com texto maior no celular */
+  .escala-table td,
+  .escala-table th,
+  .maternity-table td,
+  .maternity-table th,
+  .stats-scroll-table td,
+  .stats-scroll-table th,
+  #now-doctors-table-body td {
+    font-size: 13.5px !important;
+  }
+
+  .escala-table td div {
+    font-size: 13px !important;
+  }
+
+  /* Inputs, selects e textareas com 16px no mobile (evita zoom forçado no iOS e melhora leitura) */
+  input[type="text"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: 15px !important;
+  }
 }

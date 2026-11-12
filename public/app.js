@@ -2541,16 +2541,16 @@ const app = {
       if (valEl) {
         valEl.textContent = val > 0 ? `${L}${val}` : '0';
         valEl.className = val > 0
-          ? 'text-xs sm:text-sm font-extrabold text-scred-700'
-          : 'text-xs sm:text-sm font-bold text-slate-300';
+          ? 'text-base sm:text-sm font-extrabold text-scred-700'
+          : 'text-base sm:text-sm font-bold text-slate-300';
       }
       if (btnEl) {
         if (isWheelOpen) {
-          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-scred-600 bg-scred-50/70 shadow-xs transition';
+          btnEl.className = 'flex flex-col items-center justify-center py-3 sm:py-2.5 px-2 min-h-[56px] sm:min-h-[48px] rounded-2xl border-2 border-scred-600 bg-scred-50/70 shadow-xs transition';
         } else if (val > 0) {
-          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-brand-600 bg-brand-50/60 transition';
+          btnEl.className = 'flex flex-col items-center justify-center py-3 sm:py-2.5 px-2 min-h-[56px] sm:min-h-[48px] rounded-2xl border-2 border-brand-600 bg-brand-50/60 transition';
         } else {
-          btnEl.className = 'flex flex-col items-center justify-center py-2 px-1 rounded-xl border border-m3-outlineVariant bg-white hover:border-brand-500 transition opacity-75';
+          btnEl.className = 'flex flex-col items-center justify-center py-3 sm:py-2.5 px-2 min-h-[56px] sm:min-h-[48px] rounded-2xl border border-m3-outlineVariant bg-white hover:border-brand-500 transition opacity-80';
         }
       }
     });
@@ -2600,13 +2600,13 @@ const app = {
         : `${letter}${n}`;
       itemsHtml += `
         <button type="button" id="parity-wheel-opt-${n}" onclick="app.selectParityNumber('${letter}', ${n})"
-                class="alarm-wheel-item w-full py-2 px-3 rounded-xl text-center font-extrabold text-xs sm:text-sm flex items-center justify-between transition ${
+                class="alarm-wheel-item w-full py-3 sm:py-2.5 px-4 min-h-[46px] rounded-xl text-center font-extrabold text-sm flex items-center justify-between transition ${
                   isSelected
                     ? 'bg-scred-600 text-white shadow-xs'
-                    : 'bg-m3-containerLow/60 hover:bg-brand-50 text-brand-950'
+                    : 'bg-m3-containerLow/70 hover:bg-brand-50 text-brand-950'
                 }">
           <span>${labelText}</span>
-          ${isSelected ? '<span class="text-[10px] uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-full">Selecionado</span>' : ''}
+          ${isSelected ? '<span class="text-[11px] uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">Selecionado</span>' : ''}
         </button>
       `;
     }
@@ -2735,7 +2735,7 @@ const app = {
         const safeCode = item.code.replace(/'/g, "\\'");
         return `
           <button type="button" onclick="app.toggleAltoRiscoItem('${safeCode}')"
-                  class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-left text-xs font-bold transition ${
+                  class="flex items-center justify-between gap-2.5 px-3.5 py-3 sm:py-2.5 min-h-[48px] sm:min-h-[40px] rounded-xl text-left text-sm sm:text-xs font-bold transition ${
                     isChecked
                       ? item.isHabitual
                         ? 'bg-brand-700 text-white shadow-2xs'
@@ -2743,7 +2743,7 @@ const app = {
                       : 'bg-m3-containerLow/70 hover:bg-brand-50 text-brand-950'
                   }">
             <span class="truncate">${this.escapeHtml(item.label)}</span>
-            <span class="w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+            <span class="w-5 h-5 rounded-md border flex items-center justify-center shrink-0 text-xs ${
               isChecked ? 'border-white bg-white/20 text-white' : 'border-slate-300 bg-white'
             }">
               ${isChecked ? '✓' : ''}
@@ -2898,10 +2898,12 @@ const app = {
 
     document.querySelectorAll('.evo-int-btn').forEach(btn => {
       const opt = btn.getAttribute('data-int-opt');
+      const isClinico = opt === 'TRATAMENTO CLÍNICO';
+      const fontClass = isClinico ? 'text-xs' : 'text-sm sm:text-xs';
       if (opt === selectedOpt) {
-        btn.className = 'evo-int-btn py-2 px-2 rounded-xl border-2 border-scred-600 bg-scred-600 text-white text-xs font-extrabold shadow-xs transition';
+        btn.className = `evo-int-btn py-3 sm:py-2.5 px-2.5 min-h-[46px] rounded-xl border-2 border-scred-600 bg-scred-600 text-white ${fontClass} font-extrabold shadow-xs transition flex items-center justify-center text-center leading-tight`;
       } else {
-        btn.className = 'evo-int-btn py-2 px-2 rounded-xl border border-m3-outlineVariant bg-white text-xs font-extrabold text-brand-950 hover:bg-brand-50 transition';
+        btn.className = `evo-int-btn py-3 sm:py-2.5 px-2.5 min-h-[46px] rounded-xl border border-m3-outlineVariant bg-white ${fontClass} font-extrabold text-brand-950 hover:bg-brand-50 transition flex items-center justify-center text-center leading-tight`;
       }
     });
 
@@ -2963,6 +2965,11 @@ const app = {
     const shouldShow = forceState !== null ? forceState : box.classList.contains('hidden');
     box.classList.toggle('hidden', !shouldShow);
 
+    const infoText = document.getElementById('evo-reminder-info-text');
+    if (infoText && !shouldShow) {
+      infoText.classList.add('hidden');
+    }
+
     if (shouldShow) {
       const timeInput = document.getElementById('evo-reminder-time-input');
       if (timeInput && !timeInput.value) {
@@ -2974,6 +2981,12 @@ const app = {
       this.updateReminderDoctorPreview();
       if (window.lucide) lucide.createIcons();
     }
+  },
+
+  toggleEvolutionReminderInfo() {
+    const infoEl = document.getElementById('evo-reminder-info-text');
+    if (!infoEl) return;
+    infoEl.classList.toggle('hidden');
   },
 
   getDoctorsOnCallAtTime(timeStr, dateStr = null) {
