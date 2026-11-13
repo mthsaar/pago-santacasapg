@@ -429,28 +429,15 @@ body {
    ========================================================================== */
 input[type="date"],
 input[type="time"] {
-  -webkit-appearance: none;
-  appearance: none;
-  display: flex !important;
-  align-items: center !important;
+  display: block;
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
-  min-height: 48px !important;
-  height: 48px !important;
-  line-height: 28px !important;
-  padding: 0.55rem 0.85rem !important;
+  min-height: 46px !important;
+  height: 46px !important;
+  line-height: normal !important;
+  padding: 0.5rem 0.75rem !important;
   box-sizing: border-box !important;
-}
-
-input[type="date"]::-webkit-date-and-time-value,
-input[type="time"]::-webkit-date-and-time-value {
-  text-align: left !important;
-  margin: 0 !important;
-  min-height: 28px !important;
-  line-height: 28px !important;
-  display: inline-flex !important;
-  align-items: center !important;
 }
 
 /* ==========================================================================

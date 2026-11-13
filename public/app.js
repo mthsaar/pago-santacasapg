@@ -92,7 +92,10 @@ const app = {
     maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || '',
     shiftReminderConfig: {
       enabled: localStorage.getItem('shift_reminder_enabled') !== 'false',
-      channel: localStorage.getItem('shift_reminder_channel') || 'whatsapp',
+      my_doctor_id: localStorage.getItem('shift_reminder_my_doctor_id') || 'ALL',
+      notify_shift_1h: localStorage.getItem('shift_reminder_notify_1h') !== 'false',
+      notify_clinical: localStorage.getItem('shift_reminder_notify_clinical') !== 'false',
+      channel: localStorage.getItem('shift_reminder_channel') || 'inapp',
       webhook_url: localStorage.getItem('shift_reminder_webhook') || ''
     },
     sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}'),
@@ -2228,14 +2231,23 @@ const app = {
   openShiftReminderModal() {
     const modal = document.getElementById('modal-shift-reminders');
     const enabledEl = document.getElementById('reminder-auto-enabled');
-    const channelEl = document.getElementById('reminder-channel-select');
-    const webhookEl = document.getElementById('reminder-webhook-url');
+    const myDocSelect = document.getElementById('reminder-my-doctor-select');
+    const optShift1h = document.getElementById('reminder-opt-shift-1h');
+    const optClinical = document.getElementById('reminder-opt-clinical');
 
     const cfg = this.state.shiftReminderConfig || {};
     if (enabledEl) enabledEl.checked = cfg.enabled !== false;
-    if (channelEl) channelEl.value = cfg.channel || 'whatsapp';
-    if (webhookEl) webhookEl.value = cfg.webhook_url || '';
+    if (optShift1h) optShift1h.checked = cfg.notify_shift_1h !== false;
+    if (optClinical) optClinical.checked = cfg.notify_clinical !== false;
 
+    if (myDocSelect) {
+      const sortedDocs = [...(this.state.doctors || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      myDocSelect.innerHTML = `<option value="ALL">Todos os plantonistas (Receber todos os alertas)</option>` +
+        sortedDocs.map(d => `<option value="${d.id}">${this.escapeHtml(d.name)}</option>`).join('');
+      myDocSelect.value = cfg.my_doctor_id || 'ALL';
+    }
+
+    this.updateDeviceNotificationButtonUI();
     this.renderShiftReminderModal();
     if (modal) modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
@@ -2246,11 +2258,224 @@ const app = {
     if (modal) modal.classList.add('hidden');
   },
 
+  updateDeviceNotificationButtonUI() {
+    const labelEl = document.getElementById('label-browser-notif-status');
+    const btnEl = document.getElementById('btn-enable-browser-notif');
+    if (!labelEl || !btnEl) return;
+
+    if (!('Notification' in window)) {
+      labelEl.textContent = 'Alerta Sonoro e Visual Ativo no App';
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      labelEl.textContent = 'Notificações Ativas neste Aparelho ✓';
+      btnEl.className = 'flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition';
+    } else if (Notification.permission === 'denied') {
+      labelEl.textContent = 'Permissão bloqueada no navegador (Alerta no App ativo)';
+    } else {
+      labelEl.textContent = 'Ativar Notificação no Aparelho';
+    }
+  },
+
+  async requestDeviceNotificationPermission() {
+    this.playClinicalAlertChime();
+    if (!('Notification' in window)) {
+      this.showToast('Alertas internos e sonoros ativados no WebApp!', 'success');
+      return;
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      this.updateDeviceNotificationButtonUI();
+      if (perm === 'granted') {
+        this.triggerNativeDeviceNotification(
+          'Santa Casa PG • Notificações Ativas',
+          'Você receberá os alertas dos seus plantões e evoluções neste aparelho.'
+        );
+        this.showToast('Notificações do aparelho ativadas com sucesso!', 'success');
+      } else {
+        this.showToast('Alerta interno do WebApp ativo!', 'info');
+      }
+    } catch (e) {
+      this.showToast('Alerta interno e sonoro do WebApp ativo!', 'info');
+    }
+  },
+
+  playClinicalAlertChime() {
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate([180, 90, 180]);
+      }
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+
+      const playTone = (freq, start, duration) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      playTone(659.25, now, 0.22);       // E5
+      playTone(880.00, now + 0.24, 0.35); // A5
+    } catch (e) {}
+  },
+
+  async triggerNativeDeviceNotification(title, body) {
+    this.playClinicalAlertChime();
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            body,
+            icon: '/icon-192.png',
+            badge: '/icon-192.png',
+            vibrate: [200, 100, 200]
+          });
+          return;
+        }
+      }
+      new Notification(title, { body, icon: '/icon-192.png' });
+    } catch (e) {}
+  },
+
+  testInAppDeviceNotification() {
+    const cfg = this.state.shiftReminderConfig || {};
+    const myDocId = cfg.my_doctor_id || 'ALL';
+    const docObj = this.state.doctors.find(d => String(d.id) === String(myDocId));
+    const docLabel = docObj ? docObj.name : 'Plantonista Vinculado';
+
+    this.triggerNativeDeviceNotification(
+      '🏥 Teste de Alerta • Maternidade Santa Casa PG',
+      `Dr(a). ${docLabel}: Notificações de plantão e lembretes de evolução funcionando neste aparelho!`
+    );
+
+    this.openClinicalReminderFiredModal(
+      { leito: 'PRÉ 1', patient_name: 'Paciente Exemplo (Teste)', text: 'Verificar pressão arterial e BCF', time: new Date().toTimeString().slice(0, 5), date: new Date().toISOString().slice(0, 10) },
+      docLabel,
+      docObj ? docObj.phone : '',
+      `Lembrete de teste no WebApp para Dr(a). ${docLabel}`
+    );
+  },
+
+  downloadCalendarICS({ title, description, dateStr, timeStr, durationMinutes = 30 }) {
+    const [y, m, d] = (dateStr || new Date().toISOString().slice(0, 10)).split('-').map(Number);
+    const [hh, mm] = (timeStr || '12:00').split(':').map(Number);
+    const start = new Date(y, m - 1, d, hh, mm, 0);
+    const end = new Date(start.getTime() + durationMinutes * 60000);
+
+    const fmt = (dt) => {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${dt.getFullYear()}${pad(dt.getMonth() + 1)}${pad(dt.getDate())}T${pad(dt.getHours())}${pad(dt.getMinutes())}00`;
+    };
+
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Santa Casa PG//Maternidade Escala//PT-BR',
+      'BEGIN:VEVENT',
+      `UID:scpg-${Date.now()}@pago-santacasapg.web.app`,
+      `DTSTAMP:${fmt(new Date())}`,
+      `DTSTART:${fmt(start)}`,
+      `DTEND:${fmt(end)}`,
+      `SUMMARY:${title}`,
+      `DESCRIPTION:${String(description || '').replace(/\n/g, '\\n')}`,
+      'BEGIN:VALARM',
+      'TRIGGER:-PT5M',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${title}`,
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ];
+
+    const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lembrete-maternidade-santacasapg.ics';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 300);
+    this.showToast('Abrindo Calendário/Alarme do aparelho...', 'success');
+  },
+
+  downloadReminderICSById(reminderId) {
+    const rem = (this.state.clinicalReminders || []).find(r => r.id === reminderId);
+    if (!rem) return;
+    const docs = this.getDoctorsOnCallAtTime(rem.time, rem.date);
+    const docNames = docs.length > 0 ? docs.map(d => d.name).join(', ') : 'Plantonista';
+    this.downloadCalendarICS({
+      title: `🏥 Leito ${rem.leito}: ${rem.text}`,
+      description: `Paciente: ${rem.patient_name || rem.leito}\nLembrete: ${rem.text}\nPlantonista no horário: ${docNames}`,
+      dateStr: rem.date || rem.created_date || new Date().toISOString().slice(0, 10),
+      timeStr: rem.time,
+      durationMinutes: 15
+    });
+  },
+
   renderShiftReminderModal() {
     const info = this.getUpcomingShiftInfo();
     const titleEl = document.getElementById('reminder-next-shift-title');
     const badgeEl = document.getElementById('reminder-next-shift-time-badge');
     const listEl = document.getElementById('reminder-upcoming-doctors-list');
+    const clinicalListEl = document.getElementById('reminder-modal-clinical-list');
+    const myDocId = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.my_doctor_id) || 'ALL';
+
+    if (clinicalListEl) {
+      const activeRems = (this.state.clinicalReminders || []).filter(r => !r.fired);
+      if (activeRems.length === 0) {
+        clinicalListEl.innerHTML = `
+          <div class="p-3 rounded-xl bg-white border border-m3-outlineVariant/50 text-center text-slate-400 font-semibold">
+            Nenhum lembrete clínico pendente no momento. Adicione em Pacientes → Adicionar evolução.
+          </div>
+        `;
+      } else {
+        clinicalListEl.innerHTML = activeRems.map(r => {
+          const rDate = r.date || r.created_date || new Date().toISOString().slice(0, 10);
+          const docs = this.getDoctorsOnCallAtTime(r.time, rDate);
+          const docNames = docs.length > 0 ? docs.map(d => d.name).join(', ') : 'Plantonista';
+          const isMe = myDocId !== 'ALL' && docs.some(d => String(d.id) === String(myDocId));
+
+          return `
+            <div class="p-3 rounded-xl bg-white border ${isMe ? 'border-scred-300 bg-scred-50/30' : 'border-m3-outlineVariant/60'} flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="px-2 py-0.5 rounded-full bg-scred-100 text-scred-800 font-extrabold text-[11px]">${this.formatShortDate(rDate)} às ${this.escapeHtml(r.time)}</span>
+                  <span class="font-extrabold text-brand-950 text-xs">${this.escapeHtml(r.leito)} • ${this.escapeHtml(r.patient_name || '')}</span>
+                </div>
+                <div class="text-xs font-bold text-slate-800 mt-1">${this.escapeHtml(r.text)}</div>
+                <div class="text-[11px] text-slate-500">Plantonista no horário: <strong class="text-brand-900">${this.escapeHtml(docNames)}</strong></div>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button type="button" onclick="app.downloadReminderICSById('${r.id}')" title="Salvar no Alarme/Calendário do Celular"
+                        class="w-8 h-8 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 flex items-center justify-center transition">
+                  <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+                </button>
+                <button type="button" onclick="app.removeClinicalReminder('${r.id}'); app.renderShiftReminderModal();" title="Remover lembrete"
+                        class="w-8 h-8 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 flex items-center justify-center transition">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
 
     if (titleEl) {
       titleEl.textContent = `${info.shiftLabel} • ${this.formatDateBR(info.dateStr)}`;
@@ -2272,41 +2497,29 @@ const app = {
     }
 
     listEl.innerHTML = info.doctors.map(item => {
-      const clean = this.cleanPhone(item.phone);
-      const hasPhone = Boolean(clean && clean.length >= 8);
-      const encodedMsg = encodeURIComponent(item.message);
-      const waLink = hasPhone ? `https://wa.me/55${clean}?text=${encodedMsg}` : '#';
-      const smsLink = hasPhone ? `sms:+55${clean}?&body=${encodedMsg}` : '#';
+      const isSelectedDoc = myDocId !== 'ALL' && String(item.doctor_id) === String(myDocId);
+      const safeTitle = `🏥 Plantão Maternidade Santa Casa PG (${item.role_label})`.replace(/'/g, "\\'");
+      const safeDesc = `${item.message}`.replace(/'/g, "\\'").replace(/\n/g, ' ');
 
       return `
-        <div class="p-3 rounded-xl bg-white border border-m3-outlineVariant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div class="p-3 rounded-xl bg-white border ${isSelectedDoc ? 'border-2 border-scred-500 bg-scred-50/20' : 'border-m3-outlineVariant/60'} flex items-center justify-between gap-2.5">
           <div class="min-w-0">
-            <div class="font-extrabold text-brand-950 text-xs sm:text-sm truncate">${this.escapeHtml(item.doctor_name)}</div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-extrabold text-brand-950 text-xs sm:text-sm truncate">${this.escapeHtml(item.doctor_name)}</span>
+              ${isSelectedDoc ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-scred-600 text-white">Você</span>' : ''}
+            </div>
             <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px]">
               <span class="font-bold text-scred-700 bg-scred-50 px-2 py-0.2 rounded-full border border-scred-200">${this.escapeHtml(item.role_label)}</span>
-              <span class="font-mono ${hasPhone ? 'text-slate-600 font-bold' : 'text-slate-400 italic'}">${hasPhone ? this.escapeHtml(item.phone) : 'Sem telefone cadastrado'}</span>
+              <span class="text-slate-500 font-semibold">Início às ${this.escapeHtml(item.start_time)}</span>
             </div>
           </div>
 
-          <div class="flex items-center gap-1.5 shrink-0">
-            ${hasPhone ? `
-              <a href="${waLink}" target="_blank"
-                 class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-2xs transition">
-                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                <span>WhatsApp</span>
-              </a>
-              <a href="${smsLink}"
-                 class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-[11px] font-extrabold shadow-2xs transition">
-                <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
-                <span>SMS</span>
-              </a>
-            ` : `
-              <button type="button" onclick="app.closeShiftReminderModal(); app.openDoctorModal('${item.doctor_id}')"
-                      class="px-2.5 py-1 rounded-full bg-m3-container text-brand-800 text-[11px] font-bold hover:bg-brand-100 transition">
-                Cadastrar nº
-              </button>
-            `}
-          </div>
+          <button type="button"
+                  onclick="app.downloadCalendarICS({ title: '${safeTitle}', description: '${safeDesc}', dateStr: '${info.dateStr}', timeStr: '${item.start_time}', durationMinutes: 360 })"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 text-[11px] font-extrabold transition shrink-0">
+            <i data-lucide="calendar-plus" class="w-3.5 h-3.5 text-brand-700"></i>
+            <span>Alarme no Celular</span>
+          </button>
         </div>
       `;
     }).join('');
@@ -2316,32 +2529,30 @@ const app = {
 
   async saveShiftReminderConfig(showFeedback = false) {
     const enabledEl = document.getElementById('reminder-auto-enabled');
-    const channelEl = document.getElementById('reminder-channel-select');
-    const webhookEl = document.getElementById('reminder-webhook-url');
+    const myDocSelect = document.getElementById('reminder-my-doctor-select');
+    const optShift1h = document.getElementById('reminder-opt-shift-1h');
+    const optClinical = document.getElementById('reminder-opt-clinical');
 
     const cfg = {
       enabled: enabledEl ? Boolean(enabledEl.checked) : true,
-      channel: channelEl ? channelEl.value : 'whatsapp',
-      webhook_url: webhookEl ? webhookEl.value.trim() : ''
+      my_doctor_id: myDocSelect ? myDocSelect.value : (this.state.shiftReminderConfig.my_doctor_id || 'ALL'),
+      notify_shift_1h: optShift1h ? Boolean(optShift1h.checked) : true,
+      notify_clinical: optClinical ? Boolean(optClinical.checked) : true,
+      channel: 'inapp'
     };
 
     this.state.shiftReminderConfig = cfg;
     localStorage.setItem('shift_reminder_enabled', String(cfg.enabled));
-    localStorage.setItem('shift_reminder_channel', cfg.channel);
-    localStorage.setItem('shift_reminder_webhook', cfg.webhook_url);
+    localStorage.setItem('shift_reminder_my_doctor_id', cfg.my_doctor_id);
+    localStorage.setItem('shift_reminder_notify_1h', String(cfg.notify_shift_1h));
+    localStorage.setItem('shift_reminder_notify_clinical', String(cfg.notify_clinical));
     this.updateReminderActiveDot();
-
-    if (this.state.firebaseActive && this.state.firestoreDb) {
-      try {
-        await this.state.firestoreDb.collection('settings').doc('shift_reminders').set({
-          ...cfg,
-          updated_at: new Date().toISOString()
-        }, { merge: true });
-      } catch (e) {}
-    }
+    this.renderShiftReminderModal();
 
     if (showFeedback) {
-      this.showToast('Configuração de lembretes 1h antes salva!', 'success');
+      const docObj = this.state.doctors.find(d => String(d.id) === String(cfg.my_doctor_id));
+      const label = docObj ? `Dr(a). ${docObj.name}` : 'Todos os plantonistas';
+      this.showToast(`Notificações configuradas no aparelho para: ${label}`, 'success');
     }
   },
 
@@ -2382,37 +2593,28 @@ const app = {
 
   async checkAndTriggerOneHourShiftReminders() {
     const cfg = this.state.shiftReminderConfig;
-    if (!cfg || !cfg.enabled) return;
+    if (!cfg || !cfg.enabled || cfg.notify_shift_1h === false) return;
 
     const info = this.getUpcomingShiftInfo();
     if (!info.isOneHourWindow || info.doctors.length === 0) return;
 
+    const myDocId = cfg.my_doctor_id || 'ALL';
+
     for (const item of info.doctors) {
+      if (myDocId !== 'ALL' && String(item.doctor_id) !== String(myDocId)) continue;
+
       const reminderKey = `${info.dateStr}_${info.startTimeStr}_${item.doctor_id}_${item.role_label}`;
       if (this.state.sentShiftReminders[reminderKey]) continue;
-
-      const clean = this.cleanPhone(item.phone);
-      if (!clean) continue;
 
       this.state.sentShiftReminders[reminderKey] = new Date().toISOString();
       try {
         localStorage.setItem('sent_shift_reminders', JSON.stringify(this.state.sentShiftReminders));
       } catch (e) {}
 
-      if (cfg.webhook_url) {
-        await this.sendShiftReminderPayload(item, cfg.channel || 'whatsapp');
-      }
-
-      if (this.state.firebaseActive && this.state.firestoreDb) {
-        this.state.firestoreDb.collection('shift_reminders_sent').doc(reminderKey.replace(/[^a-zA-Z0-9_-]/g, '_')).set({
-          doctor_name: item.doctor_name,
-          phone: item.phone,
-          role_label: item.role_label,
-          date: info.dateStr,
-          start_time: info.startTimeStr,
-          sent_at: new Date().toISOString()
-        }, { merge: true }).catch(() => {});
-      }
+      await this.triggerNativeDeviceNotification(
+        `🏥 Plantão em 1h (${item.start_time})`,
+        `Dr(a). ${item.doctor_name}: Seu plantão (${item.role_label}) na Maternidade inicia às ${item.start_time}.`
+      );
 
       this.showToast(`Lembrete de 1h (${item.start_time}): Dr(a). ${item.doctor_name}`, 'info');
     }
@@ -2914,10 +3116,19 @@ const app = {
   },
 
   selectInternacaoOption(opt) {
-    if (this.state.evoInternacaoSelected === opt) {
-      // Mantém selecionado e foca nos campos
-    } else {
-      this.state.evoInternacaoSelected = opt;
+    this.state.evoInternacaoSelected = opt;
+    if (INTERNACAO_DELIVERY_TYPES.includes(opt)) {
+      const dateInput = document.getElementById('evo-birth-date');
+      const timeInput = document.getElementById('evo-birth-time');
+      const now = new Date();
+      if (dateInput && !dateInput.value) {
+        dateInput.value = now.toISOString().slice(0, 10);
+      }
+      if (timeInput && !timeInput.value) {
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        timeInput.value = `${hh}:${mm}`;
+      }
     }
     this.renderInternacaoControlsUI();
     this.syncInternacaoTextFromControls();
@@ -2971,9 +3182,13 @@ const app = {
     }
 
     if (shouldShow) {
+      const dateInput = document.getElementById('evo-reminder-date-input');
       const timeInput = document.getElementById('evo-reminder-time-input');
+      const nextHour = new Date(Date.now() + 3600000);
+      if (dateInput && !dateInput.value) {
+        dateInput.value = nextHour.toISOString().slice(0, 10);
+      }
       if (timeInput && !timeInput.value) {
-        const nextHour = new Date(Date.now() + 3600000);
         const hh = String(nextHour.getHours()).padStart(2, '0');
         const mm = String(nextHour.getMinutes()).padStart(2, '0');
         timeInput.value = `${hh}:${mm}`;
@@ -3031,28 +3246,33 @@ const app = {
   },
 
   updateReminderDoctorPreview() {
+    const dateInput = document.getElementById('evo-reminder-date-input');
     const timeInput = document.getElementById('evo-reminder-time-input');
     const previewEl = document.getElementById('evo-reminder-target-doctor-preview');
     if (!previewEl) return;
 
+    const dateVal = (dateInput && dateInput.value) ? dateInput.value : new Date().toISOString().slice(0, 10);
     const timeVal = (timeInput && timeInput.value) ? timeInput.value : '12:00';
-    const docs = this.getDoctorsOnCallAtTime(timeVal);
+    const docs = this.getDoctorsOnCallAtTime(timeVal, dateVal);
+    const shortDate = this.formatShortDate(dateVal);
     if (docs.length > 0) {
-      previewEl.textContent = `Plantonista às ${timeVal}: ${docs.map(d => d.name).join(', ')}`;
+      previewEl.textContent = `Plantonista em ${shortDate} às ${timeVal}: ${docs.map(d => d.name).join(', ')}`;
     } else {
-      previewEl.textContent = `Aviso agendado para o plantonista das ${timeVal}`;
+      previewEl.textContent = `Aviso agendado para o plantonista de ${shortDate} às ${timeVal}`;
     }
   },
 
   async addClinicalReminderToObservation() {
     const leitoSelect = document.getElementById('evo-select-leito');
     const textInput = document.getElementById('evo-reminder-text-input');
+    const dateInput = document.getElementById('evo-reminder-date-input');
     const timeInput = document.getElementById('evo-reminder-time-input');
     const obsEl = document.getElementById('evo-input-observacoes');
     const nomeEl = document.getElementById('evo-input-nome');
 
     const leito = leitoSelect ? leitoSelect.value : 'PRÉ 1';
     const reminderText = (textInput ? textInput.value : '').trim();
+    const reminderDate = (dateInput && dateInput.value) ? dateInput.value : new Date().toISOString().slice(0, 10);
     const reminderTime = (timeInput ? timeInput.value : '').trim();
 
     if (!reminderText) {
@@ -3077,8 +3297,9 @@ const app = {
       leito,
       patient_name: (nomeEl ? nomeEl.value : '').trim() || `Leito ${leito}`,
       text: reminderText,
+      date: reminderDate,
       time: reminderTime,
-      created_date: new Date().toISOString().slice(0, 10),
+      created_date: reminderDate,
       fired: false,
       created_at: new Date().toISOString()
     };
@@ -3097,7 +3318,7 @@ const app = {
     if (textInput) textInput.value = '';
     this.toggleEvolutionReminderBox(false);
     this.renderEvolutionActiveReminders(leito);
-    this.showToast(`Lembrete "${reminderText}" agendado para ${reminderTime}!`, 'success');
+    this.showToast(`Lembrete "${reminderText}" agendado para ${this.formatShortDate(reminderDate)} às ${reminderTime}!`, 'success');
   },
 
   removeClinicalReminder(reminderId) {
@@ -3131,13 +3352,16 @@ const app = {
     }
 
     container.innerHTML = list.map(r => {
-      const docs = this.getDoctorsOnCallAtTime(r.time);
+      const rDate = r.date || r.created_date || new Date().toISOString().slice(0, 10);
+      const docs = this.getDoctorsOnCallAtTime(r.time, rDate);
       const docLabel = docs.length > 0 ? docs[0].name : 'Plantonista';
+      const shortDate = this.formatShortDate(rDate);
       return `
-        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-scred-50 text-scred-800 border border-scred-200 text-[11px] font-extrabold">
-          <i data-lucide="alarm-clock" class="w-3 h-3 text-scred-600"></i>
-          <span>${this.escapeHtml(r.time)} • ${this.escapeHtml(r.text)} (${this.escapeHtml(docLabel)})</span>
-          <button type="button" onclick="app.removeClinicalReminder('${r.id}')" class="hover:text-scred-950 ml-0.5">×</button>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-scred-50 text-scred-800 border border-scred-200 text-xs font-extrabold">
+          <i data-lucide="alarm-clock" class="w-3.5 h-3.5 text-scred-600 shrink-0"></i>
+          <span>${shortDate} ${this.escapeHtml(r.time)} • ${this.escapeHtml(r.text)} (${this.escapeHtml(docLabel)})</span>
+          <button type="button" onclick="app.downloadReminderICSById('${r.id}')" title="Salvar no Alarme/Calendário do Celular" class="text-brand-700 hover:text-brand-950 ml-0.5">📅</button>
+          <button type="button" onclick="app.removeClinicalReminder('${r.id}')" title="Remover" class="hover:text-scred-950 ml-0.5">×</button>
         </span>
       `;
     }).join('');
@@ -3146,17 +3370,31 @@ const app = {
   },
 
   async checkClinicalReminders() {
+    const cfg = this.state.shiftReminderConfig || {};
+    if (cfg.enabled === false || cfg.notify_clinical === false) return;
+
     const list = this.state.clinicalReminders || [];
     if (list.length === 0) return;
 
     const now = new Date();
+    const curDateStr = now.toISOString().slice(0, 10);
     const curHH = String(now.getHours()).padStart(2, '0');
     const curMM = String(now.getMinutes()).padStart(2, '0');
     const curTimeStr = `${curHH}:${curMM}`;
+    const myDocId = cfg.my_doctor_id || 'ALL';
 
     for (const rem of list) {
       if (rem.fired) continue;
+      const remDate = rem.date || rem.created_date || curDateStr;
+      if (remDate !== curDateStr) continue;
       if (rem.time !== curTimeStr) continue;
+
+      const onCallDocs = this.getDoctorsOnCallAtTime(rem.time, remDate);
+      // Se o médico selecionou seu nome neste aparelho, filtra para tocar se ele estiver no plantão (ou se não houver ninguém escalado no slot)
+      if (myDocId !== 'ALL' && onCallDocs.length > 0) {
+        const isOnCall = onCallDocs.some(d => String(d.id) === String(myDocId));
+        if (!isOnCall) continue;
+      }
 
       rem.fired = true;
       rem.fired_at = now.toISOString();
@@ -3171,28 +3409,18 @@ const app = {
         }, { merge: true }).catch(() => {});
       }
 
-      const onCallDocs = this.getDoctorsOnCallAtTime(rem.time);
       const primaryDoc = onCallDocs[0] || { name: 'Plantonista em Turno', phone: '' };
       const allDocNames = onCallDocs.length > 0 ? onCallDocs.map(d => d.name).join(', ') : 'Médico(a) Plantonista';
 
       const msg = `Olá Dr(a). ${primaryDoc.name}, lembrete clínico agendado (${rem.time}) na Maternidade Santa Casa PG:\n• Leito ${rem.leito} (${rem.patient_name || 'Paciente'}): ${rem.text}`;
 
-      // 1. Se houver gateway / webhook configurado, envia automaticamente para todos os médicos de plantão no horário
-      for (const doc of onCallDocs) {
-        if (this.cleanPhone(doc.phone).length >= 8) {
-          await this.sendShiftReminderPayload({
-            doctor_id: doc.id,
-            doctor_name: doc.name,
-            phone: doc.phone,
-            role_label: `Lembrete Leito ${rem.leito}`,
-            start_time: rem.time,
-            date: now.toISOString().slice(0, 10),
-            message: `Olá Dr(a). ${doc.name}, lembrete clínico agendado (${rem.time}) na Maternidade Santa Casa PG - Leito ${rem.leito} (${rem.patient_name || 'Paciente'}): ${rem.text}`
-          }, (this.state.shiftReminderConfig && this.state.shiftReminderConfig.channel) || 'whatsapp');
-        }
-      }
+      // Dispara Notificação Nativa + Som no Aparelho do Médico
+      await this.triggerNativeDeviceNotification(
+        `⏰ Lembrete Leito ${rem.leito} (${rem.time})`,
+        `${rem.patient_name || 'Paciente'}: ${rem.text} • Plantonista: ${allDocNames}`
+      );
 
-      // 2. Exibe o alerta visual na tela com link direto do WhatsApp do médico de plantão
+      // Exibe o alerta visual na tela do WebApp
       this.openClinicalReminderFiredModal(rem, allDocNames, primaryDoc.phone, msg);
     }
   },

@@ -19,7 +19,7 @@
   <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=14">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
   <link rel="manifest" href="/manifest.json?v=14">
-  <link rel="stylesheet" href="/styles.css?v=18">
+  <link rel="stylesheet" href="/styles.css?v=19">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -1334,29 +1334,35 @@
 
               <!-- Explicação do alerta visível APENAS ao apertar o botão com ícone "i" -->
               <p id="evo-reminder-info-text" class="hidden text-xs text-slate-600 bg-brand-50/70 border border-brand-200/80 rounded-lg p-2.5 leading-snug">
-                No horário escolhido, o sistema identifica automaticamente quem está de plantão na escala e envia o lembrete via WhatsApp. Na planilha do Google Sheets ficará registrado apenas o texto do lembrete.
+                No dia e horário escolhidos, o sistema identifica automaticamente quem está de plantão na escala e dispara uma notificação no WebApp e no celular do médico vinculado (além de permitir salvar no alarme/calendário do aparelho). Na planilha do Google Sheets ficará registrado apenas o texto do lembrete.
               </p>
 
               <div class="space-y-2.5 w-full">
                 <div class="min-w-0 w-full">
                   <label class="block text-xs font-bold text-slate-700 mb-1">Descrição do lembrete</label>
                   <input type="text" id="evo-reminder-text-input" placeholder="Ex: Verificar pressão, checar BCF, reavaliar..."
-                         class="w-full max-w-full min-w-0 block box-border bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                         class="w-full max-w-full min-w-0 block box-border bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-scred-600">
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end w-full">
-                  <div class="min-w-0 w-full overflow-hidden">
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Horário do aviso</label>
-                    <input type="time" id="evo-reminder-time-input" oninput="app.updateReminderDoctorPreview()"
-                           class="w-full max-w-full min-w-0 h-12 min-h-[48px] bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                <div class="flex flex-col sm:grid sm:grid-cols-2 gap-2.5 w-full">
+                  <div class="min-w-0 w-full">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Data do lembrete</label>
+                    <input type="date" id="evo-reminder-date-input" onchange="app.updateReminderDoctorPreview()"
+                           class="w-full max-w-full min-w-0 h-12 min-h-[46px] bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-sm font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
                   </div>
 
-                  <button type="button" onclick="app.addClinicalReminderToObservation()"
-                          class="w-full h-12 min-h-[48px] py-2.5 px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition shadow-xs">
-                    <i data-lucide="plus" class="w-4 h-4 shrink-0"></i>
-                    <span>Incluir Lembrete</span>
-                  </button>
+                  <div class="min-w-0 w-full">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Horário do aviso</label>
+                    <input type="time" id="evo-reminder-time-input" oninput="app.updateReminderDoctorPreview()"
+                           class="w-full max-w-full min-w-0 h-12 min-h-[46px] bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-sm font-extrabold text-brand-950 focus:outline-none focus:ring-2 focus:ring-scred-600">
+                  </div>
                 </div>
+
+                <button type="button" onclick="app.addClinicalReminderToObservation()"
+                        class="w-full h-12 min-h-[46px] py-2.5 px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white text-xs sm:text-sm font-extrabold flex items-center justify-center gap-1.5 transition shadow-xs">
+                  <i data-lucide="plus" class="w-4 h-4 shrink-0"></i>
+                  <span>Incluir Lembrete</span>
+                </button>
               </div>
 
               <div class="pt-0.5">
@@ -1563,7 +1569,7 @@
     </div>
   </div>
 
-  <!-- ================= MODAL: AVISO AUTOMÁTICO WHATSAPP / SMS (1H ANTES DO PLANTÃO) ================= -->
+  <!-- ================= MODAL: NOTIFICAÇÕES NO WEBAPP POR MÉDICO (SEM DEPENDER DE WHATSAPP/SMS) ================= -->
   <div id="modal-shift-reminders" class="fixed inset-0 bg-brand-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-m3-xl max-w-lg w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active max-h-[90vh] flex flex-col">
       <div class="px-5 py-4 bg-gradient-to-r from-brand-800 to-brand-950 text-white flex items-center justify-between shrink-0">
@@ -1572,8 +1578,8 @@
             <i data-lucide="bell-ring" class="w-5 h-5"></i>
           </div>
           <div>
-            <h3 class="font-extrabold text-sm sm:text-base leading-tight">Lembrete de Plantão (1h antes)</h3>
-            <p class="text-[11px] text-brand-100">Envio de aviso via WhatsApp ou SMS para o médico escalado</p>
+            <h3 class="font-extrabold text-sm sm:text-base leading-tight">Notificações no WebApp • Plantonista</h3>
+            <p class="text-[11px] text-brand-100">Selecione seu nome para receber seus alertas direto no aparelho</p>
           </div>
         </div>
         <button type="button" onclick="app.closeShiftReminderModal()" class="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition">
@@ -1582,7 +1588,75 @@
       </div>
 
       <div class="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-        <!-- Próximo turno (em 1h ou próximo horário) -->
+        <!-- 1. IDENTIFICAÇÃO DO MÉDICO NESTE APARELHO (SEM PRECISAR DE WHATSAPP/SMS) -->
+        <div class="rounded-2xl bg-white border-2 border-brand-200 p-4 space-y-3 shadow-2xs">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl bg-brand-100 text-brand-800 flex items-center justify-center shrink-0">
+                <i data-lucide="user-check" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h4 class="font-extrabold text-brand-950 text-xs sm:text-sm">Quem é você neste aparelho?</h4>
+                <p class="text-[11px] text-slate-500">O WebApp filtrará os alertas dos seus plantões e pacientes</p>
+              </div>
+            </div>
+            <label class="inline-flex items-center cursor-pointer shrink-0" title="Ativar ou desativar notificações neste aparelho">
+              <input type="checkbox" id="reminder-auto-enabled" class="sr-only peer" onchange="app.saveShiftReminderConfig(true)">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all relative peer-checked:bg-scred-600"></div>
+            </label>
+          </div>
+
+          <div>
+            <label class="block font-extrabold text-brand-950 mb-1">Selecione seu nome na escala:</label>
+            <select id="reminder-my-doctor-select" onchange="app.saveShiftReminderConfig(true)"
+                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-extrabold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+              <option value="ALL">Todos os plantonistas (Receber todos os alertas)</option>
+            </select>
+          </div>
+
+          <!-- Opções do que notificar -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <label class="flex items-center gap-2 p-2.5 rounded-xl bg-m3-containerLow/70 border border-m3-outlineVariant/60 cursor-pointer">
+              <input type="checkbox" id="reminder-opt-shift-1h" checked onchange="app.saveShiftReminderConfig(false)"
+                     class="w-4 h-4 accent-scred-600 rounded">
+              <span class="font-bold text-brand-950 text-xs">1h antes do meu plantão</span>
+            </label>
+            <label class="flex items-center gap-2 p-2.5 rounded-xl bg-m3-containerLow/70 border border-m3-outlineVariant/60 cursor-pointer">
+              <input type="checkbox" id="reminder-opt-clinical" checked onchange="app.saveShiftReminderConfig(false)"
+                     class="w-4 h-4 accent-scred-600 rounded">
+              <span class="font-bold text-brand-950 text-xs">Lembretes de evoluções</span>
+            </label>
+          </div>
+
+          <!-- Permissão de Notificação Nativa do Celular / Navegador + Teste -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+            <button type="button" id="btn-enable-browser-notif" onclick="app.requestDeviceNotificationPermission()"
+                    class="flex-1 py-2.5 px-3 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition">
+              <i data-lucide="smartphone" class="w-4 h-4 shrink-0"></i>
+              <span id="label-browser-notif-status">Ativar Notificação no Aparelho</span>
+            </button>
+
+            <button type="button" onclick="app.testInAppDeviceNotification()"
+                    class="py-2.5 px-3.5 rounded-xl bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 font-extrabold text-xs flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="volume-2" class="w-4 h-4 shrink-0"></i>
+              <span>Testar Alerta</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. LEMBRETES CLÍNICOS AGENDADOS NAS EVOLUÇÕES -->
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5 font-extrabold text-brand-950">
+              <i data-lucide="alarm-clock" class="w-4 h-4 text-scred-600"></i>
+              <span>Lembretes de Evolução Agendados</span>
+            </div>
+            <span class="text-[11px] font-bold text-slate-500">Toque em  📅 para salvar no alarme do celular</span>
+          </div>
+          <div id="reminder-modal-clinical-list" class="space-y-2 pt-1"></div>
+        </div>
+
+        <!-- 3. PRÓXIMO TURNO DA ESCALA -->
         <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 p-3.5 space-y-2.5">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-1.5 font-extrabold text-brand-950">
@@ -1593,56 +1667,7 @@
               Horário
             </span>
           </div>
-          <p class="text-[11px] text-slate-600">
-            Disparo rápido via WhatsApp ou SMS para os profissionais do próximo turno (ou automático 1h antes às <strong>06:00</strong>, <strong>12:00</strong> e <strong>18:00</strong>):
-          </p>
           <div id="reminder-upcoming-doctors-list" class="space-y-2 pt-1"></div>
-        </div>
-
-        <!-- Configuração de Disparo 100% Automático (Webhook / API WhatsApp ou SMS) -->
-        <div class="rounded-2xl bg-white border border-m3-outlineVariant/70 p-4 space-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <div>
-              <h4 class="font-extrabold text-brand-950 text-xs sm:text-sm">Disparo Automático 1h Antes do Plantão</h4>
-              <p class="text-[11px] text-slate-500">Verifica a escala automaticamente 60 min antes de cada turno</p>
-            </div>
-            <label class="inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="reminder-auto-enabled" class="sr-only peer" onchange="app.saveShiftReminderConfig()">
-              <div class="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all relative peer-checked:bg-scred-600"></div>
-            </label>
-          </div>
-
-          <div>
-            <label class="block font-bold text-slate-700 mb-1">Canal Preferencial:</label>
-            <select id="reminder-channel-select" onchange="app.saveShiftReminderConfig()"
-                    class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-extrabold text-brand-950 focus:outline-none">
-              <option value="whatsapp">WhatsApp (API / Webhook + Botão Direto)</option>
-              <option value="sms">SMS (Gateway Webhook + SMS Nativo)</option>
-              <option value="both">WhatsApp + SMS</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block font-bold text-slate-700 mb-1">URL do Gateway / Webhook Automático (Z-API, Evolution, Twilio ou Apps Script):</label>
-            <input type="url" id="reminder-webhook-url" placeholder="https://..."
-                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-none">
-            <p class="text-[10px] text-slate-500 mt-1 leading-relaxed">
-              Quando preenchido, o sistema envia um <code>POST</code> JSON automático com <code>{ doctor_name, phone, shift_label, start_time, message, channel }</code> exatamente 1h antes do turno iniciar, sem precisar clicar.
-            </p>
-          </div>
-
-          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <button type="button" onclick="app.testShiftReminderWebhook()"
-                    class="px-3.5 py-2 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 font-extrabold text-xs flex items-center gap-1.5 transition">
-              <i data-lucide="send" class="w-3.5 h-3.5"></i>
-              <span>Disparar teste (próximo turno)</span>
-            </button>
-
-            <button type="button" onclick="app.saveShiftReminderConfig(true)"
-                    class="px-4 py-2 rounded-full bg-brand-700 hover:bg-brand-800 text-white font-extrabold text-xs shadow transition">
-              Salvar Configuração
-            </button>
-          </div>
         </div>
       </div>
 
@@ -1670,22 +1695,23 @@
       <p id="fired-reminder-patient-info" class="text-xs text-slate-600 font-bold mt-1"></p>
 
       <div class="my-4 p-3.5 rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/60 text-left space-y-1.5">
-        <div class="text-xs font-extrabold text-scred-700" id="fired-reminder-text"></div>
-        <div class="text-[11px] text-slate-600 pt-1 border-t border-m3-outlineVariant/40">
+        <div class="text-xs sm:text-sm font-extrabold text-scred-700" id="fired-reminder-text"></div>
+        <div class="text-xs text-slate-600 pt-1 border-t border-m3-outlineVariant/40">
           Plantonista no horário: <strong id="fired-reminder-doctor-name" class="text-brand-950"></strong>
         </div>
       </div>
 
       <div class="flex flex-col gap-2">
-        <a id="fired-reminder-whatsapp-btn" href="#" target="_blank" onclick="app.closeClinicalReminderFiredModal()"
-           class="w-full py-3 px-4 rounded-full bg-scred-600 hover:bg-scred-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
-          <i data-lucide="send" class="w-4 h-4"></i>
-          <span>Enviar WhatsApp ao Plantonista Agora</span>
-        </a>
         <button type="button" onclick="app.closeClinicalReminderFiredModal()"
-                class="w-full py-2.5 px-4 text-xs font-bold text-slate-600 bg-m3-containerLow hover:bg-m3-container rounded-full transition">
-          Fechar
+                class="w-full py-3 px-4 rounded-full bg-scred-600 hover:bg-scred-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition">
+          <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+          <span>Confirmar Leitura no App</span>
         </button>
+        <a id="fired-reminder-whatsapp-btn" href="#" target="_blank" onclick="app.closeClinicalReminderFiredModal()"
+           class="w-full py-2.5 px-4 rounded-full bg-m3-containerLow hover:bg-m3-container text-brand-950 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+          <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+          <span>Encaminhar via WhatsApp (Opcional)</span>
+        </a>
       </div>
     </div>
   </div>
@@ -1694,10 +1720,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=18"></script>
-  <script src="/app.js?v=18"></script>
+  <script src="/initial-data.js?v=19"></script>
+  <script src="/app.js?v=19"></script>
   <script>
-    const CURRENT_APP_VERSION = "v18-202611122052";
+    const CURRENT_APP_VERSION = "v19-202611122105";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1720,7 +1746,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=18", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=19", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }
