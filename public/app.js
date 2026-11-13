@@ -95,8 +95,7 @@ const app = {
       my_doctor_id: localStorage.getItem('shift_reminder_my_doctor_id') || 'ALL',
       notify_shift_1h: localStorage.getItem('shift_reminder_notify_1h') !== 'false',
       notify_clinical: localStorage.getItem('shift_reminder_notify_clinical') !== 'false',
-      channel: localStorage.getItem('shift_reminder_channel') || 'inapp',
-      webhook_url: localStorage.getItem('shift_reminder_webhook') || ''
+      channel: 'inapp'
     },
     sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}'),
     evoParity: { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' },
@@ -104,7 +103,9 @@ const app = {
     evoAltoRiscoOutros: '',
     evoInternacaoSelected: '',
     evoInternacaoExtra: '',
-    clinicalReminders: JSON.parse(localStorage.getItem('maternity_clinical_reminders') || '[]')
+    clinicalReminders: JSON.parse(localStorage.getItem('maternity_clinical_reminders') || '[]'),
+    viewingProfileDoctorId: null,
+    deferredPwaPrompt: null
   },
 
   async init() {
@@ -117,6 +118,7 @@ const app = {
       this.state.selectedDate = todayStr;
     }
 
+    this.initPwaInstallSupport();
     this.setupDatePickers();
     this.updateModeUI();
     this.startClockAndCountdown();
@@ -173,6 +175,73 @@ const app = {
     setInterval(() => {
       this.syncMaternityFromGoogleSheet();
     }, 12000);
+  },
+
+  // ================= SALVAR NA TELA DE INÍCIO (PWA STANDALONE) =================
+  isRunningStandalone() {
+    return Boolean(
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true
+    );
+  },
+
+  initPwaInstallSupport() {
+    this.updatePwaInstallButtonsVisibility();
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.state.deferredPwaPrompt = e;
+      this.updatePwaInstallButtonsVisibility();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      this.state.deferredPwaPrompt = null;
+      this.updatePwaInstallButtonsVisibility();
+      this.closeInstallPwaModal();
+      this.showToast('WebApp salvo na Tela de Início com sucesso!', 'success');
+    });
+  },
+
+  updatePwaInstallButtonsVisibility() {
+    const standalone = this.isRunningStandalone();
+    const ids = ['btn-install-pwa-mobile', 'btn-install-pwa-reminder', 'profile-modal-btn-install-pwa'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden', standalone);
+    });
+
+    const nativeBtn = document.getElementById('btn-native-pwa-install');
+    if (nativeBtn) {
+      nativeBtn.classList.toggle('hidden', !this.state.deferredPwaPrompt);
+    }
+  },
+
+  async openInstallPwaModal() {
+    if (this.state.deferredPwaPrompt) {
+      await this.triggerNativePwaInstall();
+      return;
+    }
+    this.updatePwaInstallButtonsVisibility();
+    const modal = document.getElementById('modal-install-pwa');
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  closeInstallPwaModal() {
+    const modal = document.getElementById('modal-install-pwa');
+    if (modal) modal.classList.add('hidden');
+  },
+
+  async triggerNativePwaInstall() {
+    const promptEvent = this.state.deferredPwaPrompt;
+    if (!promptEvent) return;
+    try {
+      promptEvent.prompt();
+      await promptEvent.userChoice;
+      this.state.deferredPwaPrompt = null;
+      this.updatePwaInstallButtonsVisibility();
+      this.closeInstallPwaModal();
+    } catch (e) {}
   },
 
   // ================= FIREBASE CLOUD FIRESTORE INTEGRATION =================
@@ -2195,11 +2264,11 @@ const app = {
     const doctorsList = matchingShifts.map(s => {
       const docObj = this.state.doctors.find(d => String(d.id) === String(s.doctor_id)) || {};
       const roleMap = {
-        routine: 'Rotineiro (07-13h)',
-        morning: 'Plantão Manhã (07-13h)',
-        afternoon: 'Plantão Tarde (13-19h)',
-        evening: 'Reforço (19-23h)',
-        night: 'Plantão Noturno (19-07h)'
+        routine: 'Rotineiro (07–13h)',
+        morning: 'Manhã (07–13h)',
+        afternoon: 'Tarde (13–19h)',
+        evening: 'Reforço (19–23h)',
+        night: 'Noturno (19–07h)'
       };
       const docName = docObj.name || s.doctor_name || 'Médico(a)';
       const docPhone = docObj.phone || s.doctor_phone || '';
@@ -2247,6 +2316,7 @@ const app = {
       myDocSelect.value = cfg.my_doctor_id || 'ALL';
     }
 
+    this.updatePwaInstallButtonsVisibility();
     this.updateDeviceNotificationButtonUI();
     this.renderShiftReminderModal();
     if (modal) modal.classList.remove('hidden');
@@ -2263,18 +2333,23 @@ const app = {
     const btnEl = document.getElementById('btn-enable-browser-notif');
     if (!labelEl || !btnEl) return;
 
+    const baseClasses = 'w-full h-11 min-h-[44px] px-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition whitespace-nowrap';
+
     if (!('Notification' in window)) {
-      labelEl.textContent = 'Alerta Sonoro e Visual Ativo no App';
+      labelEl.textContent = 'Alerta no App ✓';
+      btnEl.className = `${baseClasses} bg-emerald-600 hover:bg-emerald-700 text-white`;
       return;
     }
 
     if (Notification.permission === 'granted') {
-      labelEl.textContent = 'Notificações Ativas neste Aparelho ✓';
-      btnEl.className = 'flex-1 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition';
+      labelEl.textContent = 'Notificação Ativa ✓';
+      btnEl.className = `${baseClasses} bg-emerald-600 hover:bg-emerald-700 text-white`;
     } else if (Notification.permission === 'denied') {
-      labelEl.textContent = 'Permissão bloqueada no navegador (Alerta no App ativo)';
+      labelEl.textContent = 'Alerta no App ✓';
+      btnEl.className = `${baseClasses} bg-brand-700 hover:bg-brand-800 text-white`;
     } else {
-      labelEl.textContent = 'Ativar Notificação no Aparelho';
+      labelEl.textContent = 'Ativar no Aparelho';
+      btnEl.className = `${baseClasses} bg-brand-700 hover:bg-brand-800 text-white`;
     }
   },
 
@@ -2502,23 +2577,22 @@ const app = {
       const safeDesc = `${item.message}`.replace(/'/g, "\\'").replace(/\n/g, ' ');
 
       return `
-        <div class="p-3 rounded-xl bg-white border ${isSelectedDoc ? 'border-2 border-scred-500 bg-scred-50/20' : 'border-m3-outlineVariant/60'} flex items-center justify-between gap-2.5">
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="font-extrabold text-brand-950 text-xs sm:text-sm truncate">${this.escapeHtml(item.doctor_name)}</span>
-              ${isSelectedDoc ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-scred-600 text-white">Você</span>' : ''}
+        <div class="p-3 rounded-xl bg-white border ${isSelectedDoc ? 'border-2 border-scred-500 bg-scred-50/20' : 'border-m3-outlineVariant/60'} flex flex-col gap-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="font-extrabold text-brand-950 text-sm leading-tight">${this.escapeHtml(item.doctor_name)}</span>
+              ${isSelectedDoc ? '<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-scred-600 text-white whitespace-nowrap">Você</span>' : ''}
             </div>
-            <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px]">
-              <span class="font-bold text-scred-700 bg-scred-50 px-2 py-0.2 rounded-full border border-scred-200">${this.escapeHtml(item.role_label)}</span>
-              <span class="text-slate-500 font-semibold">Início às ${this.escapeHtml(item.start_time)}</span>
-            </div>
+            <span class="inline-flex items-center font-extrabold text-scred-700 bg-scred-50 px-2.5 py-1 rounded-lg border border-scred-200 text-[11px] whitespace-nowrap shrink-0">
+              ${this.escapeHtml(item.role_label)}
+            </span>
           </div>
 
           <button type="button"
                   onclick="app.downloadCalendarICS({ title: '${safeTitle}', description: '${safeDesc}', dateStr: '${info.dateStr}', timeStr: '${item.start_time}', durationMinutes: 360 })"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 text-[11px] font-extrabold transition shrink-0">
-            <i data-lucide="calendar-plus" class="w-3.5 h-3.5 text-brand-700"></i>
-            <span>Alarme no Celular</span>
+                  class="w-full h-10 min-h-[40px] px-3 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-900 border border-brand-200 text-xs font-extrabold flex items-center justify-center gap-1.5 whitespace-nowrap transition">
+            <i data-lucide="calendar-plus" class="w-4 h-4 text-brand-700 shrink-0"></i>
+            <span>Alarme no Celular (Início às ${this.escapeHtml(item.start_time)})</span>
           </button>
         </div>
       `;
@@ -2548,46 +2622,15 @@ const app = {
     localStorage.setItem('shift_reminder_notify_clinical', String(cfg.notify_clinical));
     this.updateReminderActiveDot();
     this.renderShiftReminderModal();
+    this.renderDoctorsCatalog();
+    if (this.state.viewingProfileDoctorId) {
+      this.updateProfileNotificationUI(this.state.viewingProfileDoctorId);
+    }
 
     if (showFeedback) {
       const docObj = this.state.doctors.find(d => String(d.id) === String(cfg.my_doctor_id));
       const label = docObj ? `Dr(a). ${docObj.name}` : 'Todos os plantonistas';
-      this.showToast(`Notificações configuradas no aparelho para: ${label}`, 'success');
-    }
-  },
-
-  async sendShiftReminderPayload(item, channel = 'whatsapp') {
-    const webhookUrl = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.webhook_url || '').trim();
-    if (!webhookUrl) return false;
-
-    const clean = this.cleanPhone(item.phone);
-    if (!clean) return false;
-
-    const payload = {
-      event: 'shift_reminder_1h',
-      channel,
-      doctor_id: item.doctor_id,
-      doctor_name: item.doctor_name,
-      phone: `+55${clean}`,
-      raw_phone: item.phone,
-      shift_label: item.role_label,
-      start_time: item.start_time,
-      date: item.date,
-      message: item.message,
-      timestamp: new Date().toISOString()
-    };
-
-    try {
-      await fetch(webhookUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-      return true;
-    } catch (e) {
-      console.warn('Erro ao acionar webhook de lembrete:', e);
-      return false;
+      this.showToast(`Notificações no WebApp ativas para: ${label}`, 'success');
     }
   },
 
@@ -2617,37 +2660,6 @@ const app = {
       );
 
       this.showToast(`Lembrete de 1h (${item.start_time}): Dr(a). ${item.doctor_name}`, 'info');
-    }
-  },
-
-  async testShiftReminderWebhook() {
-    await this.saveShiftReminderConfig(false);
-    const info = this.getUpcomingShiftInfo();
-    const withPhone = info.doctors.filter(d => this.cleanPhone(d.phone).length >= 8);
-
-    if (withPhone.length === 0) {
-      this.showToast('Cadastre o telefone de ao menos um médico do próximo turno para testar.', 'info');
-      return;
-    }
-
-    const cfg = this.state.shiftReminderConfig || {};
-    if (cfg.webhook_url) {
-      let sentCount = 0;
-      for (const item of withPhone) {
-        const ok = await this.sendShiftReminderPayload(item, cfg.channel || 'whatsapp');
-        if (ok) sentCount++;
-      }
-      this.showToast(`Disparo enviado ao gateway para ${sentCount} médico(s) do próximo turno!`, 'success');
-    } else {
-      const first = withPhone[0];
-      const clean = this.cleanPhone(first.phone);
-      const encodedMsg = encodeURIComponent(first.message);
-      if (cfg.channel === 'sms') {
-        window.location.href = `sms:+55${clean}?&body=${encodedMsg}`;
-      } else {
-        window.open(`https://wa.me/55${clean}?text=${encodedMsg}`, '_blank');
-      }
-      this.showToast(`Abrindo mensagem de lembrete para Dr(a). ${first.doctor_name}`, 'success');
     }
   },
 
@@ -3425,24 +3437,17 @@ const app = {
     }
   },
 
-  openClinicalReminderFiredModal(rem, docNames, phone, message) {
+  openClinicalReminderFiredModal(rem, docNames) {
     const modal = document.getElementById('modal-clinical-reminder-fired');
     const badgeEl = document.getElementById('fired-reminder-time-badge');
     const patientEl = document.getElementById('fired-reminder-patient-info');
     const textEl = document.getElementById('fired-reminder-text');
     const docEl = document.getElementById('fired-reminder-doctor-name');
-    const waBtn = document.getElementById('fired-reminder-whatsapp-btn');
 
     if (badgeEl) badgeEl.textContent = `Agendado para ${rem.time}`;
     if (patientEl) patientEl.textContent = `Leito ${rem.leito} • ${rem.patient_name || 'Paciente'}`;
     if (textEl) textEl.textContent = `Lembrete: ${rem.text}`;
     if (docEl) docEl.textContent = docNames;
-
-    if (waBtn) {
-      const clean = this.cleanPhone(phone);
-      const encoded = encodeURIComponent(message);
-      waBtn.href = clean ? `https://wa.me/55${clean}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
-    }
 
     if (modal) modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
@@ -3717,23 +3722,28 @@ const app = {
       filtered = filtered.filter(d => d.name && d.name.toLowerCase().includes(q));
     }
 
+    const cfg = this.state.shiftReminderConfig || {};
+    const activeNotifyDocId = cfg.enabled !== false ? String(cfg.my_doctor_id || '') : '';
+
     grid.innerHTML = filtered.map(doc => {
       const phoneDisplay = doc.phone && doc.phone.trim() !== '' ? doc.phone : 'Não cadastrado';
       const hasPhone = Boolean(doc.phone && doc.phone.trim() !== '');
+      const isReceivingNotif = activeNotifyDocId === String(doc.id);
 
       return `
-        <div class="m3-card m3-card-interactive p-5 flex flex-col justify-between">
+        <div class="m3-card m3-card-interactive p-5 flex flex-col justify-between ${isReceivingNotif ? 'ring-2 ring-scred-500' : ''}">
           <div>
-            <div class="flex items-center gap-3.5 mb-3">
-              <div class="w-16 h-16 rounded-2xl overflow-hidden border-2 border-brand-100 shadow-xs bg-brand-50 shrink-0 flex items-center justify-center cursor-pointer"
-                   onclick="app.openDoctorProfileById('${doc.id}')">
+            <div class="flex items-center gap-3.5 mb-3 cursor-pointer" onclick="app.openDoctorProfileById('${doc.id}')">
+              <div class="w-16 h-16 rounded-2xl overflow-hidden border-2 border-brand-100 shadow-xs bg-brand-50 shrink-0 flex items-center justify-center">
                 ${this.renderAvatar(doc.photo_url)}
               </div>
               <div class="flex-1 min-w-0">
-                <h4 class="font-extrabold text-brand-950 text-base leading-snug truncate cursor-pointer hover:text-brand-700"
-                    onclick="app.openDoctorProfileById('${doc.id}')">
-                  ${doc.name}
-                </h4>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <h4 class="font-extrabold text-brand-950 text-base leading-snug truncate hover:text-brand-700">
+                    ${doc.name}
+                  </h4>
+                  ${isReceivingNotif ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-scred-600 text-white whitespace-nowrap">🔔 Notificando</span>` : ''}
+                </div>
                 <p class="text-xs text-slate-400 font-medium">${doc.crm ? `CRM ${doc.crm}` : 'CRM não cadastrado'}</p>
                 <span class="inline-block mt-1 text-[11px] font-bold text-brand-800 bg-brand-100 px-2.5 py-0.5 rounded-full">
                   ${this.formatSpecialty(doc.specialty)}
@@ -3741,35 +3751,43 @@ const app = {
               </div>
             </div>
 
-            <div class="bg-m3-containerLow rounded-2xl p-3 my-3 flex items-center justify-between text-xs">
+            <div class="bg-m3-containerLow rounded-2xl p-3 my-3 flex items-center justify-between text-xs cursor-pointer" onclick="app.openDoctorProfileById('${doc.id}')">
               <span class="text-slate-500 font-bold">Telefone:</span>
               <span class="font-mono ${hasPhone ? 'text-brand-950 font-extrabold' : 'text-slate-400 italic font-medium'}">${phoneDisplay}</span>
             </div>
           </div>
 
-          <div class="pt-2 flex items-center gap-2">
-            ${hasPhone ? `
-              <a href="tel:${this.cleanPhone(doc.phone)}" 
-                 class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold shadow transition">
-                <i data-lucide="phone" class="w-3.5 h-3.5"></i>
-                <span>Ligar</span>
-              </a>
-              <a href="https://wa.me/55${this.cleanPhone(doc.phone)}" target="_blank"
-                 class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow transition">
-                <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
-                <span>WhatsApp</span>
-              </a>
-            ` : `
-              <span class="flex-1 text-center text-xs text-slate-400 italic py-2 bg-m3-containerLow rounded-full">
-                Telefone não cadastrado
-              </span>
-            `}
-            ${this.state.isEditorMode ? `
-              <button onclick="app.openDoctorModal('${doc.id}')" title="Editar Profissional"
-                      class="w-9 h-9 flex items-center justify-center text-brand-700 hover:bg-brand-100 rounded-full border border-brand-200 transition shrink-0">
-                <i data-lucide="edit-3" class="w-4 h-4"></i>
-              </button>
-            ` : ''}
+          <div class="space-y-2 pt-1">
+            <button type="button" onclick="app.openDoctorProfileById('${doc.id}')"
+                    class="w-full py-2 px-3 rounded-xl ${isReceivingNotif ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200'} text-xs font-extrabold flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="${isReceivingNotif ? 'bell-ring' : 'bell-plus'}" class="w-3.5 h-3.5 shrink-0"></i>
+              <span>${isReceivingNotif ? 'Recebendo notificações ✓' : 'Receber notificações'}</span>
+            </button>
+
+            <div class="flex items-center gap-2">
+              ${hasPhone ? `
+                <a href="tel:${this.cleanPhone(doc.phone)}" 
+                   class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold shadow transition">
+                  <i data-lucide="phone" class="w-3.5 h-3.5"></i>
+                  <span>Ligar</span>
+                </a>
+                <a href="https://wa.me/55${this.cleanPhone(doc.phone)}" target="_blank"
+                   class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow transition">
+                  <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                  <span>WhatsApp</span>
+                </a>
+              ` : `
+                <span class="flex-1 text-center text-xs text-slate-400 italic py-2 bg-m3-containerLow rounded-full">
+                  Telefone não cadastrado
+                </span>
+              `}
+              ${this.state.isEditorMode ? `
+                <button onclick="app.openDoctorModal('${doc.id}')" title="Editar Profissional"
+                        class="w-9 h-9 flex items-center justify-center text-brand-700 hover:bg-brand-100 rounded-full border border-brand-200 transition shrink-0">
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                </button>
+              ` : ''}
+            </div>
           </div>
         </div>
       `;
@@ -4388,6 +4406,8 @@ const app = {
     const doc = this.state.doctors.find(d => String(d.id) === String(doctorId));
     if (!doc) return;
 
+    this.state.viewingProfileDoctorId = String(doc.id);
+
     const modal = document.getElementById('modal-doctor-profile');
     const avatarBox = document.getElementById('profile-modal-avatar-container');
     const name = document.getElementById('profile-modal-name');
@@ -4455,8 +4475,78 @@ const app = {
       shiftInfo.classList.add('hidden');
     }
 
+    this.updateProfileNotificationUI(doc.id);
+    this.updatePwaInstallButtonsVisibility();
+
     modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
+  },
+
+  updateProfileNotificationUI(doctorId) {
+    const btnEl = document.getElementById('profile-modal-btn-notify');
+    const labelEl = document.getElementById('profile-modal-btn-notify-label');
+    const subtitleEl = document.getElementById('profile-modal-notify-subtitle');
+    if (!btnEl || !labelEl) return;
+
+    const doc = this.state.doctors.find(d => String(d.id) === String(doctorId));
+    const docName = doc ? doc.name : 'este profissional';
+    const cfg = this.state.shiftReminderConfig || {};
+    const isActiveForThisDoc = cfg.enabled !== false && String(cfg.my_doctor_id) === String(doctorId);
+
+    if (isActiveForThisDoc) {
+      btnEl.className = 'w-full h-11 min-h-[44px] px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition whitespace-nowrap';
+      labelEl.textContent = 'Recebendo notificações deste profissional ✓';
+      if (subtitleEl) {
+        subtitleEl.textContent = `Este aparelho está configurado para alertar os plantões e evoluções de Dr(a). ${docName}. Toque abaixo para desativar.`;
+      }
+    } else {
+      btnEl.className = 'w-full h-11 min-h-[44px] px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition whitespace-nowrap';
+      labelEl.textContent = 'Receber notificações deste profissional';
+      if (subtitleEl) {
+        subtitleEl.textContent = `Ative para receber alertas no WebApp 1h antes dos plantões e lembretes de evoluções de Dr(a). ${docName}.`;
+      }
+    }
+  },
+
+  async toggleProfileDoctorNotifications() {
+    const doctorId = this.state.viewingProfileDoctorId;
+    if (!doctorId) return;
+
+    const doc = this.state.doctors.find(d => String(d.id) === String(doctorId));
+    const docName = doc ? doc.name : 'Profissional';
+    const cfg = this.state.shiftReminderConfig || {};
+    const isCurrentlyActive = cfg.enabled !== false && String(cfg.my_doctor_id) === String(doctorId);
+
+    if (isCurrentlyActive) {
+      this.state.shiftReminderConfig = {
+        ...cfg,
+        my_doctor_id: 'ALL'
+      };
+      localStorage.setItem('shift_reminder_my_doctor_id', 'ALL');
+      this.updateProfileNotificationUI(doctorId);
+      this.updateReminderActiveDot();
+      this.renderDoctorsCatalog();
+      this.showToast(`Filtro individual de notificações de Dr(a). ${docName} desativado.`, 'info');
+    } else {
+      this.state.shiftReminderConfig = {
+        enabled: true,
+        my_doctor_id: String(doctorId),
+        notify_shift_1h: true,
+        notify_clinical: true,
+        channel: 'inapp'
+      };
+      localStorage.setItem('shift_reminder_enabled', 'true');
+      localStorage.setItem('shift_reminder_my_doctor_id', String(doctorId));
+      localStorage.setItem('shift_reminder_notify_1h', 'true');
+      localStorage.setItem('shift_reminder_notify_clinical', 'true');
+
+      this.updateProfileNotificationUI(doctorId);
+      this.updateReminderActiveDot();
+      this.renderDoctorsCatalog();
+
+      await this.requestDeviceNotificationPermission();
+      this.showToast(`Notificações ativadas neste aparelho para Dr(a). ${docName}!`, 'success');
+    }
   },
 
   closeDoctorProfileModal() {
