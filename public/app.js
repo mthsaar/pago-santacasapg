@@ -82,6 +82,7 @@ const app = {
     redoStack: [],
     maternityFirebaseMap: {},
     maternitySheetMap: {},
+    maternitySheetLoaded: false,
     maternityLastSheetHash: {},
     maternityExtraBeds: [],
     maternityAdmissions: JSON.parse(localStorage.getItem('maternity_admissions_cache') || '[]'),
@@ -316,6 +317,9 @@ const app = {
         }
       });
       this.state.maternityFirebaseMap = map;
+      if (this.state.maternitySheetLoaded) {
+        this.reconcileMaternitySheetWithFirebase(false);
+      }
       this.renderMaternityView();
       if (this.state.currentView === 'stats') {
         const picker = document.getElementById('stats-month-picker');
@@ -1751,19 +1755,79 @@ const app = {
       .replace(/[^A-Z0-9_-]/g, '_');
   },
 
+  getBedSig(obj) {
+    if (!obj) return '|||||';
+    return [
+      String(obj.nome || '').trim(),
+      String(obj.paridade || '').trim(),
+      String(obj.tipo_sanguineo || '').trim(),
+      String(obj.alto_risco || '').trim(),
+      String(obj.internacao_por || '').trim(),
+      String(obj.observacoes || '').trim()
+    ].join('|');
+  },
+
   getMaternityBedData(leito) {
     const key = this.normalizeLeitoKey(leito);
     const fb = this.state.maternityFirebaseMap[key];
     const sh = this.state.maternitySheetMap[key];
 
-    const hasFbContent = fb && (fb.nome || fb.paridade || fb.alto_risco || fb.internacao_por || fb.observacoes || fb.cleared_at);
-    const hasShContent = sh && (sh.nome || sh.paridade || sh.alto_risco || sh.internacao_por || sh.observacoes);
+    // Se a planilha do Google Docs já carregou, ela é a fonte primária da verdade,
+    // exceto se houver uma edição salva no WebApp (sheet_sync_v === 2 && source === 'webapp')
+    // feita sobre exatamente a mesma versão atual da linha na planilha.
+    if (this.state.maternitySheetLoaded) {
+      const sheetEntry = sh || {
+        leito,
+        nome: '',
+        paridade: '',
+        tipo_sanguineo: '',
+        alto_risco: '',
+        internacao_por: '',
+        observacoes: ''
+      };
+      const shSig = this.getBedSig(sheetEntry);
+      const hasWebAppOverride = Boolean(
+        fb &&
+        fb.sheet_sync_v === 2 &&
+        fb.source === 'webapp' &&
+        fb.sheet_baseline_sig !== undefined &&
+        fb.sheet_baseline_sig === shSig
+      );
+
+      if (hasWebAppOverride) {
+        return {
+          leito,
+          nome: fb.nome || '',
+          paridade: fb.paridade || '',
+          tipo_sanguineo: fb.tipo_sanguineo || sheetEntry.tipo_sanguineo || '',
+          alto_risco: fb.alto_risco || '',
+          internacao_por: fb.internacao_por || '',
+          observacoes: fb.observacoes || '',
+          updated_at: fb.updated_at || ''
+        };
+      }
+
+      return {
+        leito,
+        nome: sheetEntry.nome || '',
+        paridade: sheetEntry.paridade || '',
+        tipo_sanguineo: sheetEntry.tipo_sanguineo || '',
+        alto_risco: sheetEntry.alto_risco || '',
+        internacao_por: sheetEntry.internacao_por || '',
+        observacoes: sheetEntry.observacoes || '',
+        updated_at: (fb && fb.updated_at) || ''
+      };
+    }
+
+    const hasFbContent = fb && (fb.nome || fb.paridade || fb.tipo_sanguineo || fb.alto_risco || fb.internacao_por || fb.observacoes || fb.cleared_at);
+    const hasShContent = sh && (sh.nome || sh.paridade || sh.tipo_sanguineo || sh.alto_risco || sh.internacao_por || sh.observacoes);
 
     if (hasFbContent) {
       return {
         leito,
         nome: fb.nome || '',
         paridade: fb.paridade || '',
+        tipo_sanguineo: fb.tipo_sanguineo || '',
         alto_risco: fb.alto_risco || '',
         internacao_por: fb.internacao_por || '',
         observacoes: fb.observacoes || '',
@@ -1776,6 +1840,7 @@ const app = {
         leito,
         nome: sh.nome || '',
         paridade: sh.paridade || '',
+        tipo_sanguineo: sh.tipo_sanguineo || '',
         alto_risco: sh.alto_risco || '',
         internacao_por: sh.internacao_por || '',
         observacoes: sh.observacoes || '',
@@ -1787,6 +1852,7 @@ const app = {
       leito,
       nome: '',
       paridade: '',
+      tipo_sanguineo: '',
       alto_risco: '',
       internacao_por: '',
       observacoes: '',
@@ -1850,6 +1916,17 @@ const app = {
       const extraBeds = [];
       const newSheetMap = {};
 
+      // Detecta dinamicamente se a coluna D (índice 3) da planilha é "T.S." (Tipo Sanguíneo)
+      let hasTsColumn = true;
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const c0 = String((rows[i] && rows[i][0]) || '').trim().toUpperCase();
+        if (c0 === 'LEITO') {
+          const c3 = String(rows[i][3] || '').trim().toUpperCase();
+          hasTsColumn = c3.startsWith('T.S') || c3.includes('SANGU') || !c3.includes('RISCO');
+          break;
+        }
+      }
+
       for (let i = 0; i < rows.length; i++) {
         const cols = rows[i];
         if (!cols || cols.length === 0) continue;
@@ -1869,9 +1946,10 @@ const app = {
           leito: rawLeito,
           nome: String(cols[1] || '').trim(),
           paridade: String(cols[2] || '').trim(),
-          alto_risco: String(cols[3] || '').trim(),
-          internacao_por: String(cols[4] || '').trim(),
-          observacoes: String(cols[5] || '').trim()
+          tipo_sanguineo: hasTsColumn ? String(cols[3] || '').trim() : '',
+          alto_risco: String(cols[hasTsColumn ? 4 : 3] || '').trim(),
+          internacao_por: String(cols[hasTsColumn ? 5 : 4] || '').trim(),
+          observacoes: String(cols[hasTsColumn ? 6 : 5] || '').trim()
         };
 
         newSheetMap[upperLeito] = entry;
@@ -1879,42 +1957,14 @@ const app = {
           knownSet.add(upperLeito);
           extraBeds.push(rawLeito);
         }
-
-        // Se a planilha do Google Docs foi alterada diretamente lá, sincroniza com o Firebase
-        const sig = `${entry.nome}|${entry.paridade}|${entry.alto_risco}|${entry.internacao_por}|${entry.observacoes}`;
-        const prevSig = this.state.maternityLastSheetHash[upperLeito];
-        this.state.maternityLastSheetHash[upperLeito] = sig;
-
-        const hasAnySheetVal = Boolean(entry.nome || entry.paridade || entry.alto_risco || entry.internacao_por || entry.observacoes);
-        const fbExisting = this.state.maternityFirebaseMap[upperLeito];
-
-        if (
-          this.state.firebaseActive &&
-          this.state.firestoreDb &&
-          ((prevSig !== undefined && prevSig !== sig) || (hasAnySheetVal && !fbExisting))
-        ) {
-          const docId = this.leitoToDocId(rawLeito);
-          const nowIso = new Date().toISOString();
-          const prevAdmittedAt = (fbExisting && fbExisting.admitted_at && fbExisting.nome === entry.nome)
-            ? fbExisting.admitted_at
-            : (hasAnySheetVal ? nowIso : null);
-          this.state.firestoreDb.collection('maternity_patients').doc(docId).set({
-            leito: rawLeito,
-            nome: entry.nome,
-            paridade: entry.paridade,
-            alto_risco: entry.alto_risco,
-            internacao_por: entry.internacao_por,
-            observacoes: entry.observacoes,
-            admitted_at: prevAdmittedAt,
-            cleared_at: !hasAnySheetVal ? nowIso : null,
-            updated_at: nowIso,
-            source: 'google_sheets'
-          }, { merge: true }).catch(() => {});
-        }
       }
 
       this.state.maternitySheetMap = newSheetMap;
       this.state.maternityExtraBeds = extraBeds;
+      this.state.maternitySheetLoaded = true;
+
+      this.reconcileMaternitySheetWithFirebase(showFeedback);
+
       this.populateEvolutionLeitoSelect();
       this.renderMaternityView();
       if (this.state.currentView === 'stats') {
@@ -1938,6 +1988,95 @@ const app = {
     }
   },
 
+  reconcileMaternitySheetWithFirebase(forceSheetPriority = false) {
+    if (!this.state.maternitySheetLoaded) return;
+
+    const allKeys = new Set([
+      ...this.getAllMaternityBedsFlat().map(b => this.normalizeLeitoKey(b)),
+      ...Object.keys(this.state.maternitySheetMap || {}),
+      ...Object.keys(this.state.maternityFirebaseMap || {})
+    ]);
+
+    const nowIso = new Date().toISOString();
+
+    allKeys.forEach(upperLeito => {
+      if (!upperLeito) return;
+      const sh = this.state.maternitySheetMap[upperLeito] || {
+        leito: upperLeito,
+        nome: '',
+        paridade: '',
+        tipo_sanguineo: '',
+        alto_risco: '',
+        internacao_por: '',
+        observacoes: ''
+      };
+      const fb = this.state.maternityFirebaseMap[upperLeito];
+
+      const shSig = this.getBedSig(sh);
+      const fbSig = this.getBedSig(fb);
+      this.state.maternityLastSheetHash[upperLeito] = shSig;
+
+      const hasAnySheetVal = Boolean(
+        sh.nome || sh.paridade || sh.tipo_sanguineo || sh.alto_risco || sh.internacao_por || sh.observacoes
+      );
+      const hasAnyFbVal = Boolean(
+        fb && (fb.nome || fb.paridade || fb.tipo_sanguineo || fb.alto_risco || fb.internacao_por || fb.observacoes)
+      );
+
+      // Mantém edição feita no WebApp apenas se não for sincronização forçada e se a linha da planilha ainda não mudou
+      const hasActiveWebAppOverride = Boolean(
+        !forceSheetPriority &&
+        fb &&
+        fb.sheet_sync_v === 2 &&
+        fb.source === 'webapp' &&
+        fb.sheet_baseline_sig !== undefined &&
+        fb.sheet_baseline_sig === shSig
+      );
+
+      if (hasActiveWebAppOverride) return;
+
+      // Se a planilha e o Firebase estão diferentes (ex: paciente recebeu alta na planilha ou dados foram editados na planilha)
+      if (shSig !== fbSig || (fb && fb.sheet_sync_v !== 2 && (hasAnySheetVal || hasAnyFbVal))) {
+        // Se havia paciente no Firebase e o leito ficou vazio na planilha (alta na planilha), registra a alta no histórico mensal
+        if (hasAnyFbVal && !hasAnySheetVal && fb.nome) {
+          this.upsertMaternityAdmissionRecord({
+            ...fb,
+            leito: sh.leito || fb.leito || upperLeito,
+            discharged_at: nowIso,
+            updated_at: nowIso
+          }, true);
+        }
+
+        const prevAdmittedAt = (fb && fb.admitted_at && fb.nome && fb.nome === sh.nome)
+          ? fb.admitted_at
+          : (hasAnySheetVal ? nowIso : null);
+
+        const syncedPayload = {
+          leito: sh.leito || (fb && fb.leito) || upperLeito,
+          nome: sh.nome || '',
+          paridade: sh.paridade || '',
+          tipo_sanguineo: sh.tipo_sanguineo || '',
+          alto_risco: sh.alto_risco || '',
+          internacao_por: sh.internacao_por || '',
+          observacoes: sh.observacoes || '',
+          admitted_at: prevAdmittedAt,
+          cleared_at: !hasAnySheetVal ? nowIso : null,
+          updated_at: nowIso,
+          source: 'google_sheets',
+          sheet_baseline_sig: shSig,
+          sheet_sync_v: 2
+        };
+
+        this.state.maternityFirebaseMap[upperLeito] = syncedPayload;
+
+        if (this.state.firebaseActive && this.state.firestoreDb) {
+          const docId = this.leitoToDocId(syncedPayload.leito);
+          this.state.firestoreDb.collection('maternity_patients').doc(docId).set(syncedPayload, { merge: true }).catch(() => {});
+        }
+      }
+    });
+  },
+
   renderMaternityView() {
     const tbody = document.getElementById('maternity-table-body');
     const badgeEl = document.getElementById('maternity-occupied-badge');
@@ -1950,23 +2089,13 @@ const app = {
     let html = '';
 
     groups.forEach((group, gIdx) => {
-      if (gIdx > 0) {
-        html += `
-          <tr class="bg-[#E8ECF7]/75">
-            <td colspan="6" class="px-3 py-1 border-b border-m3-outlineVariant/60 text-[10px] font-extrabold uppercase tracking-wider text-brand-800">
-              ${group.title}
-            </td>
-          </tr>
-        `;
-      } else {
-        html += `
-          <tr class="bg-[#E8ECF7]/75">
-            <td colspan="6" class="px-3 py-1 border-b border-m3-outlineVariant/60 text-[10px] font-extrabold uppercase tracking-wider text-brand-800">
-              ${group.title}
-            </td>
-          </tr>
-        `;
-      }
+      html += `
+        <tr class="bg-[#E8ECF7]/75">
+          <td colspan="7" class="px-3 py-1 border-b border-m3-outlineVariant/60 text-[10px] font-extrabold uppercase tracking-wider text-brand-800">
+            ${group.title}
+          </td>
+        </tr>
+      `;
 
       group.beds.forEach(leito => {
         totalBeds++;
@@ -1983,6 +2112,7 @@ const app = {
           riskVal !== '' &&
           !['não', 'nao', 'n', '-', 'baixo', 'habitual'].includes(riskVal.toLowerCase())
         );
+        const tsVal = (data.tipo_sanguineo || '').trim();
 
         const rowBg = isOccupied ? 'bg-white hover:bg-brand-50/60' : 'bg-m3-surface/50 hover:bg-brand-50/40';
         const leitoBg = isOccupied ? 'bg-brand-50 text-brand-950' : 'bg-[#F0F2FA] text-slate-600';
@@ -2003,6 +2133,13 @@ const app = {
             </td>
             <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle font-semibold text-slate-700 whitespace-nowrap">
               ${data.paridade ? this.escapeHtml(data.paridade) : '—'}
+            </td>
+            <td class="px-2.5 py-2 border-r border-b border-m3-outlineVariant/40 align-middle text-center whitespace-nowrap">
+              ${tsVal ? `
+                <span class="inline-block px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-brand-50 text-brand-900 border border-brand-200">
+                  ${this.escapeHtml(tsVal)}
+                </span>
+              ` : '<span class="text-slate-400">—</span>'}
             </td>
             <td class="px-3 py-2 border-r border-b border-m3-outlineVariant/40 align-middle">
               ${riskVal ? `
@@ -2666,12 +2803,14 @@ const app = {
   handleEvolutionLeitoChange(leito) {
     const data = this.getMaternityBedData(leito);
     const nomeEl = document.getElementById('evo-input-nome');
+    const tsEl = document.getElementById('evo-input-ts');
     const parEl = document.getElementById('evo-input-paridade');
     const riskEl = document.getElementById('evo-input-altorisco');
     const intEl = document.getElementById('evo-input-internacao');
     const obsEl = document.getElementById('evo-input-observacoes');
 
     if (nomeEl) nomeEl.value = data.nome || '';
+    if (tsEl) tsEl.value = data.tipo_sanguineo || '';
     if (parEl) parEl.value = data.paridade || '';
     if (riskEl) riskEl.value = data.alto_risco || '';
     if (intEl) intEl.value = data.internacao_por || '';
@@ -3466,8 +3605,11 @@ const app = {
     const existing = this.getMaternityBedData(leito);
     const key = this.normalizeLeitoKey(leito);
     const fbExisting = this.state.maternityFirebaseMap[key];
+    const shExisting = this.state.maternitySheetMap[key];
     const nowIso = new Date().toISOString();
     const nomeVal = (document.getElementById('evo-input-nome').value || '').trim();
+    const tsEl = document.getElementById('evo-input-ts');
+    const tsVal = (tsEl ? tsEl.value : (existing.tipo_sanguineo || '')).trim();
     const parVal = (document.getElementById('evo-input-paridade').value || '').trim();
     const riskVal = (document.getElementById('evo-input-altorisco').value || '').trim();
     const intVal = (document.getElementById('evo-input-internacao').value || '').trim();
@@ -3480,12 +3622,16 @@ const app = {
       leito,
       nome: nomeVal,
       paridade: parVal,
+      tipo_sanguineo: tsVal,
       alto_risco: riskVal,
       internacao_por: intVal,
       observacoes: obsVal,
       admitted_at: samePatient ? fbExisting.admitted_at : nowIso,
       cleared_at: null,
-      updated_at: nowIso
+      updated_at: nowIso,
+      source: 'webapp',
+      sheet_baseline_sig: this.getBedSig(shExisting),
+      sheet_sync_v: 2
     };
 
     await this.upsertMaternityAdmissionRecord(payload, false);
@@ -3539,16 +3685,21 @@ const app = {
       }, true);
     }
 
+    const shExisting = this.state.maternitySheetMap[key];
     const payload = {
       leito,
       nome: '',
       paridade: '',
+      tipo_sanguineo: '',
       alto_risco: '',
       internacao_por: '',
       observacoes: '',
       admitted_at: null,
       cleared_at: nowIso,
-      updated_at: nowIso
+      updated_at: nowIso,
+      source: 'webapp',
+      sheet_baseline_sig: this.getBedSig(shExisting),
+      sheet_sync_v: 2
     };
 
     await this.saveMaternityBedRecord(payload, `Alta confirmada — Leito ${leito} liberado!`);

@@ -19,7 +19,7 @@
   <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=14">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
   <link rel="manifest" href="/manifest.json?v=14">
-  <link rel="stylesheet" href="/styles.css?v=20">
+  <link rel="stylesheet" href="/styles.css?v=21">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -503,10 +503,13 @@
                 <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[170px]">
                   NOME
                 </th>
-                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[110px]">
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[100px]">
                   PARIDADE
                 </th>
-                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[130px]">
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-2.5 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[68px] text-center">
+                  T.S.
+                </th>
+                <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[140px]">
                   ALTO RISCO
                 </th>
                 <th class="sticky-maternity-head bg-[#E8ECF7] px-3 py-2.5 border-r border-b border-m3-outlineVariant/60 min-w-[170px]">
@@ -1172,11 +1175,28 @@
 
         <!-- Campos de Evolução (Estruturados e 100% compatíveis com Google Sheets) -->
         <div class="space-y-3.5">
-          <!-- NOME -->
-          <div>
-            <label class="block text-xs font-extrabold text-brand-950 mb-1">NOME</label>
-            <input type="text" id="evo-input-nome" placeholder="Nome completo da paciente"
-                   class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <!-- NOME E TIPO SANGUÍNEO (T.S.) -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-extrabold text-brand-950 mb-1">NOME</label>
+              <input type="text" id="evo-input-nome" placeholder="Nome completo da paciente"
+                     class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-extrabold text-brand-950 mb-1">T.S. (Tipo Sanguíneo)</label>
+              <input type="text" id="evo-input-ts" list="evo-ts-datalist" placeholder="Ex: A+, O-, B+"
+                     class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2 text-xs sm:text-sm font-extrabold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+              <datalist id="evo-ts-datalist">
+                <option value="A+"></option>
+                <option value="A-"></option>
+                <option value="B+"></option>
+                <option value="B-"></option>
+                <option value="AB+"></option>
+                <option value="AB-"></option>
+                <option value="O+"></option>
+                <option value="O-"></option>
+              </datalist>
+            </div>
           </div>
 
           <!-- PARIDADE: G P C A E M (0 a 20 estilo alarme; 0 oculta a letra) -->
@@ -1497,15 +1517,28 @@
   var sheet = ss.getSheets()[0];
   var values = sheet.getDataRange().getValues();
   var target = String(data.leito || '').trim().toUpperCase();
+  var headerRow = values[1] || [];
+  var hasTs = String(headerRow[3] || '').trim().toUpperCase().indexOf('T.S') === 0;
   for (var i = 2; i &lt; values.length; i++) {
     if (String(values[i][0] || '').trim().toUpperCase() === target) {
-      sheet.getRange(i + 1, 2, 1, 5).setValues([[
-        data.nome || '',
-        data.paridade || '',
-        data.alto_risco || '',
-        data.internacao_por || '',
-        data.observacoes || ''
-      ]]);
+      if (hasTs) {
+        sheet.getRange(i + 1, 2, 1, 6).setValues([[
+          data.nome || '',
+          data.paridade || '',
+          data.tipo_sanguineo || '',
+          data.alto_risco || '',
+          data.internacao_por || '',
+          data.observacoes || ''
+        ]]);
+      } else {
+        sheet.getRange(i + 1, 2, 1, 5).setValues([[
+          data.nome || '',
+          data.paridade || '',
+          data.alto_risco || '',
+          data.internacao_por || '',
+          data.observacoes || ''
+        ]]);
+      }
       return ContentService.createTextOutput(JSON.stringify({ok: true}))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -1825,10 +1858,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=20"></script>
-  <script src="/app.js?v=20"></script>
+  <script src="/initial-data.js?v=21"></script>
+  <script src="/app.js?v=21"></script>
   <script>
-    const CURRENT_APP_VERSION = "v20-202611122130";
+    const CURRENT_APP_VERSION = "v21-202611132145";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1851,7 +1884,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=20", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=21", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }
