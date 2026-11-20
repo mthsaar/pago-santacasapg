@@ -55,5 +55,19 @@
   ],
   "firestore": {
     "rules": "firestore.rules"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Santa Casa PG - Maternidade",
+        "supportEmail": "matheussaar@gmail.com",
+        "authorizedRedirectUris": [
+          "https://pago---santa-casa-pg.firebaseapp.com/__/auth/handler",
+          "https://pago-santacasapg.web.app/__/auth/handler",
+          "http://localhost"
+        ]
+      }
+    }
   }
 }

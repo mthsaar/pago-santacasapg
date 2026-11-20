@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import '../models/clinical_models.dart';
 
 const String kFirebaseProjectId = 'pago---santa-casa-pg';
+const String kGoogleWebClientId =
+    '702434023267-5hn9uq2kage6b1m0vcaui61f67qasn8c.apps.googleusercontent.com';
 
 class MaternityDataService extends ChangeNotifier {
   static const MethodChannel _notifChannel =
@@ -21,8 +25,10 @@ class MaternityDataService extends ChangeNotifier {
   String appsScriptWebhookUrl = '';
   String lastSyncLabel = 'Sincronizando...';
 
-  // Fluxo de Login Google > Perfil > CRM > Permissão de Notificação > Abre o App
+  // Fluxo Firebase Auth (Google ou E-mail/Senha) > CRM > Boas-vindas & Notificações
   bool hasCompletedOnboarding = false;
+  bool firebaseAuthInitialized = false;
+  String? firebaseUid;
   String? googleUserName;
   String? googleUserEmail;
   String selectedNotificationDoctorId = 'ALL';
@@ -992,8 +998,215 @@ class MaternityDataService extends ChangeNotifier {
   }
 
   /// ==========================================================================
-  /// FLUXO SIMPLIFICADO: LOGIN GOOGLE > PERFIL > CONFIRMA COM CRM
+  /// AUTENTICAÇÃO FIREBASE (GOOGLE + E-MAIL/SENHA) E VERIFICAÇÃO POR CRM
   /// ==========================================================================
+  Future<void> initFirebaseAuth() async {
+    if (firebaseAuthInitialized) return;
+    firebaseAuthInitialized = true;
+
+    try {
+      if (!kIsWeb) {
+        await GoogleSignIn.instance.initialize(
+          serverClientId: kGoogleWebClientId,
+        );
+      }
+
+      final current = FirebaseAuth.instance.currentUser;
+      if (current != null) {
+        firebaseUid = current.uid;
+        googleUserEmail = current.email?.toLowerCase();
+        googleUserName = current.displayName ?? current.email;
+        _tryMatchDoctorFromAuthenticatedEmail();
+      }
+
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        if (user != null) {
+          firebaseUid = user.uid;
+          googleUserEmail = user.email?.toLowerCase();
+          googleUserName = user.displayName ?? user.email;
+          _tryMatchDoctorFromAuthenticatedEmail();
+        } else {
+          firebaseUid = null;
+          googleUserEmail = null;
+          googleUserName = null;
+        }
+        notifyListeners();
+      });
+    } catch (_) {}
+  }
+
+  void _tryMatchDoctorFromAuthenticatedEmail() {
+    final email = googleUserEmail?.trim().toLowerCase() ?? '';
+    if (email.isEmpty) return;
+    final match = doctors.where(
+      (d) => d.linkedGoogleEmail.trim().toLowerCase() == email,
+    );
+    if (match.isNotEmpty) {
+      selectedNotificationDoctorId = match.first.id;
+    }
+  }
+
+  Future<String?> signInWithGoogleFirebase() async {
+    try {
+      UserCredential cred;
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider();
+        provider.setCustomParameters({'prompt': 'select_account'});
+        cred = await FirebaseAuth.instance.signInWithPopup(provider);
+      } else {
+        final GoogleSignInAccount googleUser =
+            await GoogleSignIn.instance.authenticate();
+        final GoogleSignInAuthentication googleAuth = googleUser.authentication;
+        final idToken = googleAuth.idToken;
+        if (idToken == null || idToken.isEmpty) {
+          return 'Não foi possível obter o token de autenticação do Google.';
+        }
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          idToken: idToken,
+        );
+        cred = await FirebaseAuth.instance.signInWithCredential(credential);
+      }
+
+      final user = cred.user;
+      if (user != null) {
+        firebaseUid = user.uid;
+        googleUserEmail = (user.email ?? '').toLowerCase();
+        googleUserName = user.displayName ?? user.email;
+        await _pullDoctorsFromFirestoreRest();
+        _tryMatchDoctorFromAuthenticatedEmail();
+        notifyListeners();
+        return null;
+      }
+      return 'Autenticação não concluída.';
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return 'Login com Google cancelado.';
+      }
+      return 'Erro no login com Google (${e.code.name}): ${e.description ?? ''}';
+    } on FirebaseAuthException catch (e) {
+      return _mapFirebaseAuthError(e);
+    } catch (e) {
+      return 'Falha ao autenticar com Google: $e';
+    }
+  }
+
+  Future<String?> signInOrSignUpWithEmailPassword({
+    required String email,
+    required String password,
+    required bool isSignUp,
+  }) async {
+    final cleanEmail = email.trim();
+    if (cleanEmail.isEmpty || !cleanEmail.contains('@')) {
+      return 'Digite um e-mail válido.';
+    }
+    if (password.length < 6) {
+      return 'A senha deve ter no mínimo 6 caracteres.';
+    }
+
+    try {
+      UserCredential cred;
+      if (isSignUp) {
+        cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: cleanEmail,
+          password: password,
+        );
+      } else {
+        cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: cleanEmail,
+          password: password,
+        );
+      }
+
+      final user = cred.user;
+      if (user != null) {
+        firebaseUid = user.uid;
+        googleUserEmail = (user.email ?? cleanEmail).toLowerCase();
+        googleUserName = user.displayName ?? cleanEmail.split('@').first;
+        await _pullDoctorsFromFirestoreRest();
+        _tryMatchDoctorFromAuthenticatedEmail();
+        notifyListeners();
+        return null;
+      }
+      return 'Autenticação não concluída.';
+    } on FirebaseAuthException catch (e) {
+      return _mapFirebaseAuthError(e);
+    } catch (e) {
+      return 'Erro ao autenticar: $e';
+    }
+  }
+
+  String _mapFirebaseAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'E-mail inválido.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'E-mail ou senha incorretos.';
+      case 'email-already-in-use':
+        return 'Este e-mail já está cadastrado. Use "Entrar".';
+      case 'weak-password':
+        return 'Senha muito fraca. Use ao menos 6 caracteres.';
+      case 'too-many-requests':
+        return 'Muitas tentativas. Aguarde alguns instantes.';
+      case 'network-request-failed':
+        return 'Sem conexão com a internet.';
+      default:
+        return e.message ?? 'Erro na autenticação (${e.code}).';
+    }
+  }
+
+  Future<void> signOutFirebase() async {
+    try {
+      if (!kIsWeb) {
+        await GoogleSignIn.instance.signOut();
+      }
+    } catch (_) {}
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+    firebaseUid = null;
+    googleUserEmail = null;
+    googleUserName = null;
+    hasCompletedOnboarding = false;
+    notifyListeners();
+  }
+
+  /// Verifica de qual profissional cadastrado pertence o CRM digitado (até 10 dígitos)
+  Future<DoctorModel?> verifyAndClaimDoctorByCrm(String rawCrm) async {
+    final cleanInput = rawCrm.replaceAll(RegExp(r'\D'), '');
+    if (cleanInput.isEmpty || cleanInput.length > 10) return null;
+
+    await _pullDoctorsFromFirestoreRest();
+
+    DoctorModel? matched;
+    for (final d in doctors) {
+      final docCrm = d.crm.replaceAll(RegExp(r'\D'), '');
+      if (docCrm.isEmpty) continue;
+      if (docCrm == cleanInput ||
+          docCrm.replaceFirst(RegExp(r'^0+'), '') ==
+              cleanInput.replaceFirst(RegExp(r'^0+'), '')) {
+        matched = d;
+        break;
+      }
+    }
+
+    if (matched == null) return null;
+
+    final email = (googleUserEmail ?? '').trim().toLowerCase();
+    final name = (googleUserName ?? '').trim();
+    if (email.isNotEmpty) {
+      matched.linkedGoogleEmail = email;
+    }
+    if (name.isNotEmpty) {
+      matched.linkedGoogleName = name;
+    }
+    selectedNotificationDoctorId = matched.id;
+    await saveOrUpdateDoctorToCloud(matched);
+    notifyListeners();
+    return matched;
+  }
+
   String? confirmProfileWithCrm({
     required DoctorModel doctor,
     required String googleEmail,
@@ -1001,8 +1214,8 @@ class MaternityDataService extends ChangeNotifier {
     required String crmInput,
   }) {
     final cleanInputCrm = crmInput.replaceAll(RegExp(r'\D'), '');
-    if (cleanInputCrm.isEmpty) {
-      return 'Digite o número do seu CRM para confirmar o perfil.';
+    if (cleanInputCrm.isEmpty || cleanInputCrm.length > 10) {
+      return 'Digite o número do seu CRM (até 10 dígitos) para confirmar o perfil.';
     }
 
     final existingCrm = doctor.crm.replaceAll(RegExp(r'\D'), '');

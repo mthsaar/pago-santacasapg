@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "702434023267",
+    "project_id": "pago---santa-casa-pg",
+    "storage_bucket": "pago---santa-casa-pg.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:702434023267:android:cff0d76461ddb965e4e556",
+        "android_client_info": {
+          "package_name": "br.com.santacasapg.pago_santacasapg"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "702434023267-bousam6dfkcad60623f1gbev9dj0lo36.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "br.com.santacasapg.pago_santacasapg",
+            "certificate_hash": "02ccc1e590ca75b85845bfd1f8004199a59e3fec"
+          }
+        },
+        {
+          "client_id": "702434023267-5hn9uq2kage6b1m0vcaui61f67qasn8c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBg3YeKQP2zNBqOeHePY3ZbPkrhGx8cPj0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "702434023267-5hn9uq2kage6b1m0vcaui61f67qasn8c.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "702434023267-49dajk6cgcvnhkmdf6gmjibsf9cr5eke.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "br.com.santacasapg.pagoSantacasapg"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

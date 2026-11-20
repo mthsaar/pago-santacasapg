@@ -1,9 +1,15 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'firebase_options.dart';
 import 'models/clinical_models.dart';
 import 'services/maternity_data_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const SantaCasaMaternidadeApp());
 }
 
@@ -29,6 +35,12 @@ class SantaCasaMaternidadeApp extends StatefulWidget {
 
 class _SantaCasaMaternidadeAppState extends State<SantaCasaMaternidadeApp> {
   final MaternityDataService service = MaternityDataService();
+
+  @override
+  void initState() {
+    super.initState();
+    service.initFirebaseAuth();
+  }
 
   @override
   void dispose() {
@@ -67,8 +79,9 @@ class _SantaCasaMaternidadeAppState extends State<SantaCasaMaternidadeApp> {
 
 /// ============================================================================
 /// FLUXO DE ENTRADA:
-/// 1. Login pelo Google > 2. Seleciona Perfil no Corpo Clínico >
-/// 3. Confirma com CRM > 4. Pop-up Deseja Receber Notificações (Android/iOS) > Abre App
+/// 1. Autenticação Firebase (Google ou Cadastro/Login com E-mail e Senha)
+/// 2. Digitar CRM (até 10 dígitos) e sistema identifica quem é o(a) médico(a)
+/// 3. Pop-up "Bem-vindo(a) Dr(a) [nome], deseja ativar as notificações?"
 /// ============================================================================
 class OnboardingFlowScreen extends StatefulWidget {
   final MaternityDataService service;
@@ -80,82 +93,85 @@ class OnboardingFlowScreen extends StatefulWidget {
 }
 
 class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
-  int _step = 0; // 0 = Google Login, 1 = Selecionar Perfil + Confirmar CRM
   final TextEditingController _emailCtrl = TextEditingController();
-  final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _passwordCtrl = TextEditingController();
   final TextEditingController _crmCtrl = TextEditingController();
-  String? _selectedDoctorId;
+
+  bool _isSignUpMode = false;
+  bool _obscurePassword = true;
+  bool _isLoading = false;
   String? _errorText;
-  bool _isSigningInGoogle = false;
 
   MaternityDataService get svc => widget.service;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
-    _nameCtrl.dispose();
+    _passwordCtrl.dispose();
     _crmCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _handleGoogleSignInStep() async {
+  Future<void> _handleGoogleFirebaseLogin() async {
     setState(() {
-      _isSigningInGoogle = true;
+      _isLoading = true;
       _errorText = null;
     });
-    await svc.syncAllWithCloud();
+    final err = await svc.signInWithGoogleFirebase();
     if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _errorText = err;
+    });
+  }
 
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
+  Future<void> _handleEmailPasswordAuth() async {
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+    final err = await svc.signInOrSignUpWithEmailPassword(
+      email: _emailCtrl.text,
+      password: _passwordCtrl.text,
+      isSignUp: _isSignUpMode,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _errorText = err;
+    });
+  }
+
+  Future<void> _handleVerifyCrmAndPromptNotifications() async {
+    final crmDigits = _crmCtrl.text.replaceAll(RegExp(r'\D'), '');
+    if (crmDigits.isEmpty || crmDigits.length > 10) {
       setState(() {
-        _isSigningInGoogle = false;
-        _errorText = 'Informe seu e-mail da conta Google para continuar.';
+        _errorText = 'Digite o número do seu CRM (até 10 dígitos).';
       });
       return;
     }
 
-    svc.googleUserEmail = email.toLowerCase();
-    svc.googleUserName = _nameCtrl.text.trim().isNotEmpty
-        ? _nameCtrl.text.trim()
-        : email.split('@').first;
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
 
-    // Pré-seleciona o médico caso o nome ou e-mail já coincida
-    if (svc.doctors.isNotEmpty) {
-      final match = svc.doctors.where((d) =>
-          d.linkedGoogleEmail.toLowerCase() == svc.googleUserEmail ||
-          d.name.toLowerCase().contains(svc.googleUserName!.toLowerCase()));
-      _selectedDoctorId =
-          match.isNotEmpty ? match.first.id : svc.doctors.first.id;
-      final doc = svc.doctors.firstWhere((d) => d.id == _selectedDoctorId);
-      _crmCtrl.text = doc.crm;
-    }
+    final matchedDoc = await svc.verifyAndClaimDoctorByCrm(crmDigits);
+    if (!mounted) return;
 
     setState(() {
-      _isSigningInGoogle = false;
-      _step = 1;
+      _isLoading = false;
     });
-  }
 
-  void _handleConfirmCrmAndPromptNotifications() {
-    if (_selectedDoctorId == null) {
-      setState(() => _errorText = 'Selecione seu perfil na lista.');
-      return;
-    }
-    final doc = svc.doctors.firstWhere((d) => d.id == _selectedDoctorId);
-    final err = svc.confirmProfileWithCrm(
-      doctor: doc,
-      googleEmail: svc.googleUserEmail ?? _emailCtrl.text.trim(),
-      googleName: svc.googleUserName ?? doc.name,
-      crmInput: _crmCtrl.text,
-    );
-
-    if (err != null) {
-      setState(() => _errorText = err);
+    if (matchedDoc == null) {
+      setState(() {
+        _errorText =
+            'CRM $crmDigits não encontrado no Corpo Clínico cadastrado. Confira o número ou solicite o cadastro do CRM à coordenação.';
+      });
       return;
     }
 
-    // Passo 4: Pop-up "Deseja receber notificação?" (solicita permissão ao Android/iOS)
+    // Pop-up de boas-vindas com o nome identificado pelo CRM e ativação das notificações
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -172,10 +188,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
               child: const Icon(Icons.notifications_active, color: kScRed600),
             ),
             const SizedBox(width: 10),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Deseja receber notificações?',
-                style: TextStyle(
+                'Bem-vindo(a) Dr(a). ${matchedDoc.name}',
+                style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 16,
                   color: kBrand950,
@@ -185,10 +201,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           ],
         ),
         content: Text(
-          'Dr(a). ${doc.name} (CRM ${doc.crm}), deseja ativar as notificações deste aparelho para:\n\n'
-          '• Aviso automático 1h antes do seu plantão\n'
+          'Bem-vindo(a) Dr(a). ${matchedDoc.name} (CRM ${matchedDoc.crm}), deseja ativar as notificações deste aparelho para receber:\n\n'
+          '• Avisos automáticos 1h antes dos seus plantões\n'
           '• Alertas agendados nas observações de pacientes internadas',
-          style: const TextStyle(fontSize: 13, height: 1.35),
+          style: const TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -203,11 +219,11 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
             style: FilledButton.styleFrom(backgroundColor: kScRed600),
             onPressed: () async {
               Navigator.pop(dCtx);
-              await svc.requestNativeNotificationPermission(doctor: doc);
+              await svc.requestNativeNotificationPermission(doctor: matchedDoc);
               setState(() => svc.hasCompletedOnboarding = true);
             },
             icon: const Icon(Icons.check_circle_outline, size: 18),
-            label: const Text('Permitir Notificações'),
+            label: const Text('Ativar Notificações'),
           ),
         ],
       ),
@@ -216,6 +232,9 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isSignedIn = svc.firebaseUid != null ||
+        (svc.googleUserEmail != null && svc.googleUserEmail!.isNotEmpty);
+
     return Scaffold(
       backgroundColor: kBrand950,
       body: SafeArea(
@@ -246,8 +265,9 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                         child: Image.asset(
                           'assets/images/logo-header.png',
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(Icons.local_hospital, color: kBrand700),
+                          errorBuilder: (_, _, _) => const Icon(
+                              Icons.local_hospital,
+                              color: kBrand700),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -278,38 +298,176 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                   ),
                   const SizedBox(height: 18),
 
-                  if (_step == 0) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: kBrand50,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.account_circle, color: kBrand700),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Passo 1 de 2: Faça login com sua conta Google para identificar seu perfil médico.',
+                  if (!isSignedIn) ...[
+                    // Botão Oficial Google Auth Firebase
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: kBrand950,
+                          side: const BorderSide(
+                              color: Color(0xFFC5C6D4), width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed:
+                            _isLoading ? null : _handleGoogleFirebaseLogin,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: kScRed50,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'G',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                  color: kScRed600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Entrar com Google',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        children: [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(
+                              'ou use e-mail e senha',
+                              style: TextStyle(
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: kBrand950,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                    ),
+
+                    // Alternador Entrar vs Cadastrar-se
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: kContainerLow,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                _isSignUpMode = false;
+                                _errorText = null;
+                              }),
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: !_isSignUpMode
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Text(
+                                  'Já tenho conta',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                    color: !_isSignUpMode
+                                        ? kBrand950
+                                        : Colors.black54,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => setState(() {
+                                _isSignUpMode = true;
+                                _errorText = null;
+                              }),
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: _isSignUpMode
+                                      ? Colors.white
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Text(
+                                  'Criar cadastro',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                    color: _isSignUpMode
+                                        ? kBrand950
+                                        : Colors.black54,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
+
                     TextField(
                       controller: _emailCtrl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: InputDecoration(
-                        labelText: 'E-mail da Conta Google',
-                        hintText: 'seunome@gmail.com',
+                        labelText: 'E-mail',
+                        hintText: 'seunome@exemplo.com',
                         prefixIcon: const Icon(Icons.mail_outline),
+                        filled: true,
+                        fillColor: kContainerLow,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _passwordCtrl,
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Senha (mín. 6 caracteres)',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined),
+                        ),
                         filled: true,
                         fillColor: kContainerLow,
                         border: OutlineInputBorder(
@@ -320,7 +478,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                     const SizedBox(height: 14),
                     SizedBox(
                       height: 48,
-                      child: FilledButton.icon(
+                      child: FilledButton(
                         style: FilledButton.styleFrom(
                           backgroundColor: kBrand700,
                           shape: RoundedRectangleBorder(
@@ -328,96 +486,92 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                           ),
                         ),
                         onPressed:
-                            _isSigningInGoogle ? null : _handleGoogleSignInStep,
-                        icon: _isSigningInGoogle
+                            _isLoading ? null : _handleEmailPasswordAuth,
+                        child: _isLoading
                             ? const SizedBox(
-                                width: 18,
-                                height: 18,
+                                width: 20,
+                                height: 20,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white),
                               )
-                            : const Icon(Icons.login),
-                        label: const Text(
-                          'Continuar com Google',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 14),
-                        ),
+                            : Text(
+                                _isSignUpMode
+                                    ? 'Cadastrar com E-mail e Senha'
+                                    : 'Entrar com E-mail e Senha',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900, fontSize: 14),
+                              ),
                       ),
                     ),
                   ] else ...[
+                    // Passo 2: Usuário autenticado no Firebase -> Digitar CRM (até 10 dígitos)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: kBrand50,
                         borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: kBrand100),
                       ),
                       child: Row(
                         children: [
                           const Icon(Icons.verified_user, color: kBrand700),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'Conta: ${svc.googleUserEmail}\nPasso 2 de 2: Selecione seu perfil e confirme com seu CRM.',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: kBrand950,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  svc.googleUserEmail ?? 'Conta Autenticada',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    color: kBrand950,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const Text(
+                                  'Agora digite seu CRM para identificarmos seu perfil médico.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () async {
+                                    await svc.signOutFirebase();
+                                    setState(() => _errorText = null);
+                                  },
+                            child: const Text(
+                              'Trocar',
+                              style: TextStyle(
+                                  fontSize: 11, fontWeight: FontWeight.w800),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      'Selecione seu Perfil no Corpo Clínico:',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                          color: kBrand950),
-                    ),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedDoctorId,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: kContainerLow,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      items: svc.doctors
-                          .map((d) => DropdownMenuItem(
-                                value: d.id,
-                                child: Text(
-                                  '${d.name} (${d.specialty}${d.crm.isNotEmpty ? " • CRM ${d.crm}" : ""})',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800, fontSize: 13),
-                                ),
-                              ))
-                          .toList(),
-                      onChanged: (val) {
-                        setState(() {
-                          _selectedDoctorId = val;
-                          if (val != null) {
-                            final doc =
-                                svc.doctors.firstWhere((d) => d.id == val);
-                            _crmCtrl.text = doc.crm;
-                          }
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: _crmCtrl,
                       keyboardType: TextInputType.number,
+                      maxLength: 10,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onSubmitted: (_) {
+                        if (!_isLoading) {
+                          _handleVerifyCrmAndPromptNotifications();
+                        }
+                      },
                       decoration: InputDecoration(
-                        labelText: 'Confirme seu CRM',
-                        hintText: 'Digite os números do seu CRM',
+                        labelText: 'Número do CRM',
+                        hintText: 'Digite até 10 números (ex: 34669)',
                         prefixIcon: const Icon(Icons.badge_outlined),
                         filled: true,
                         fillColor: kContainerLow,
@@ -426,7 +580,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
                     SizedBox(
                       height: 48,
                       child: FilledButton.icon(
@@ -436,23 +590,28 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        onPressed: _handleConfirmCrmAndPromptNotifications,
-                        icon: const Icon(Icons.check_circle),
+                        onPressed: _isLoading
+                            ? null
+                            : _handleVerifyCrmAndPromptNotifications,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.check_circle),
                         label: const Text(
-                          'Confirmar CRM e Avançar',
+                          'Verificar CRM e Entrar',
                           style: TextStyle(
                               fontWeight: FontWeight.w900, fontSize: 14),
                         ),
                       ),
                     ),
-                    TextButton(
-                      onPressed: () => setState(() => _step = 0),
-                      child: const Text('Voltar para login Google'),
-                    ),
                   ],
 
                   if (_errorText != null) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Text(
                       _errorText!,
                       textAlign: TextAlign.center,
@@ -1732,33 +1891,72 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFD5D7E5)),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (v) => setState(() => _doctorSearchQuery = v),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar médico (${svc.doctors.length})...',
-                    prefixIcon: const Icon(Icons.search, size: 18),
-                    isDense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    filled: true,
-                    fillColor: kContainerLow,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(999),
-                      borderSide: BorderSide.none,
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (v) => setState(() => _doctorSearchQuery = v),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar médico (${svc.doctors.length})...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        filled: true,
+                        fillColor: kContainerLow,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(999),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Sincronizar médicos com a Web',
+                    onPressed: () => svc.syncAllWithCloud(),
+                    icon: const Icon(Icons.sync, color: kBrand700, size: 19),
+                  ),
+                ],
+              ),
+              if (svc.googleUserEmail != null &&
+                  svc.googleUserEmail!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.verified_user,
+                        size: 14, color: kBrand700),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Logado: ${svc.googleUserEmail}',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: kBrand950),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      onPressed: () => svc.signOutFirebase(),
+                      child: const Text(
+                        'Sair / Trocar conta',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: kScRed600),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 6),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Sincronizar médicos com a Web',
-                onPressed: () => svc.syncAllWithCloud(),
-                icon: const Icon(Icons.sync, color: kBrand700, size: 19),
-              ),
+              ],
             ],
           ),
         ),
@@ -1958,8 +2156,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           child: TextField(
                             controller: crmCtrl,
                             keyboardType: TextInputType.number,
+                            maxLength: 10,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                             decoration: const InputDecoration(
-                              labelText: 'CRM',
+                              labelText: 'CRM (até 10 díg.)',
+                              counterText: '',
                               filled: true,
                               fillColor: kContainerLow,
                             ),
