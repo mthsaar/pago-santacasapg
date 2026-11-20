@@ -710,48 +710,99 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                       ),
                     )
                   : null)),
-      // Barra inferior mais baixa (52px) e com "Médicos" no lugar de "Corpo"
+      // Barra inferior compacta: contorno da aba selecionada afastado do topo e ícone próximo ao texto
       bottomNavigationBar: (!isMobile || _isTableFullscreen)
           ? null
-          : NavigationBarTheme(
-              data: NavigationBarThemeData(
-                height: 52,
-                labelTextStyle: WidgetStateProperty.all(
-                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                ),
-                iconTheme: WidgetStateProperty.all(
-                  const IconThemeData(size: 19),
-                ),
+          : Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: Color(0xFFD5D7E5))),
               ),
-              child: NavigationBar(
-                height: 52,
-                selectedIndex: _currentTab,
-                onDestinationSelected: (idx) =>
-                    setState(() => _currentTab = idx),
-                backgroundColor: Colors.white,
-                indicatorColor: kBrand100,
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.calendar_month_outlined),
-                    selectedIcon: Icon(Icons.calendar_month, color: kBrand950),
-                    label: 'Escala',
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 54,
+                  child: Row(
+                    children: [
+                      for (final item in const [
+                        (
+                          idx: 0,
+                          label: 'Escala',
+                          icon: Icons.calendar_month_outlined,
+                          activeIcon: Icons.calendar_month,
+                        ),
+                        (
+                          idx: 1,
+                          label: 'Pacientes',
+                          icon: Icons.bed_outlined,
+                          activeIcon: Icons.bed,
+                        ),
+                        (
+                          idx: 2,
+                          label: 'Médicos',
+                          icon: Icons.people_outline,
+                          activeIcon: Icons.people,
+                        ),
+                        (
+                          idx: 3,
+                          label: 'Fechamento',
+                          icon: Icons.bar_chart_outlined,
+                          activeIcon: Icons.bar_chart,
+                        ),
+                      ])
+                        Expanded(
+                          child: InkWell(
+                            onTap: () =>
+                                setState(() => _currentTab = item.idx),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 6, bottom: 4),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.max,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: _currentTab == item.idx
+                                          ? kBrand100
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Icon(
+                                      _currentTab == item.idx
+                                          ? item.activeIcon
+                                          : item.icon,
+                                      size: 19,
+                                      color: _currentTab == item.idx
+                                          ? kBrand950
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      height: 1.05,
+                                      fontWeight: _currentTab == item.idx
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                      color: _currentTab == item.idx
+                                          ? kBrand950
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.bed_outlined),
-                    selectedIcon: Icon(Icons.bed, color: kBrand950),
-                    label: 'Pacientes',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.people_outline),
-                    selectedIcon: Icon(Icons.people, color: kBrand950),
-                    label: 'Médicos',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.bar_chart_outlined),
-                    selectedIcon: Icon(Icons.bar_chart, color: kBrand950),
-                    label: 'Fechamento',
-                  ),
-                ],
+                ),
               ),
             ),
     );
@@ -953,16 +1004,22 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         headingRowHeight: 42,
         dataRowMinHeight: 46,
         dataRowMaxHeight: 46,
-        horizontalMargin: 10,
+        horizontalMargin: 8,
         columnSpacing: 0,
         columns: const [
           DataColumn(
-            label: Text(
-              'TURNO',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 11,
-                color: kBrand950,
+            label: SizedBox(
+              width: 72,
+              child: Center(
+                child: Text(
+                  'TURNO',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    color: kBrand950,
+                  ),
+                ),
               ),
             ),
           ),
@@ -971,30 +1028,37 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           return DataRow(
             cells: [
               DataCell(
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      spec['label']!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 11,
-                        color: kBrand950,
-                        height: 1.1,
-                      ),
+                SizedBox(
+                  width: 72,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          spec['label']!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 11,
+                            color: kBrand950,
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          spec['hours']!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 9.5,
+                            color: Colors.black,
+                            height: 1.0,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      spec['hours']!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 9.5,
-                        color: Colors.black,
-                        height: 1.0,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
@@ -1994,8 +2058,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, idx) {
               final doc = filtered[idx];
-              final isNotifying = svc.notificationsEnabled &&
+              final hasChosenProfile =
+                  svc.selectedNotificationDoctorId.isNotEmpty &&
+                      svc.selectedNotificationDoctorId != 'ALL';
+              final isOwnProfile = hasChosenProfile &&
                   svc.selectedNotificationDoctorId == doc.id;
+              final isNotifying = svc.notificationsEnabled && isOwnProfile;
+              final showNotifAction = !hasChosenProfile || isOwnProfile;
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -2089,33 +2158,36 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 36,
-                      child: FilledButton.tonalIcon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor:
-                              isNotifying ? Colors.green.shade50 : kScRed50,
-                          foregroundColor:
-                              isNotifying ? Colors.green.shade800 : kScRed700,
-                        ),
-                        onPressed: () => _openDoctorProfileModal(context, doc),
-                        icon: Icon(
-                          isNotifying
-                              ? Icons.notifications_active
-                              : Icons.notification_add,
-                          size: 15,
-                        ),
-                        label: Text(
-                          isNotifying
-                              ? 'Recebendo notificações ✓'
-                              : 'Receber notificações deste profissional',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 11),
-                          overflow: TextOverflow.ellipsis,
+                    if (showNotifAction) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 36,
+                        child: FilledButton.tonalIcon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                isNotifying ? Colors.green.shade50 : kScRed50,
+                            foregroundColor:
+                                isNotifying ? Colors.green.shade800 : kScRed700,
+                          ),
+                          onPressed: () =>
+                              _openDoctorProfileModal(context, doc),
+                          icon: Icon(
+                            isNotifying
+                                ? Icons.notifications_active
+                                : Icons.notification_add,
+                            size: 15,
+                          ),
+                          label: Text(
+                            isNotifying
+                                ? 'Recebendo notificações ✓'
+                                : 'Receber notificações deste profissional',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               );
@@ -2291,6 +2363,95 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
+  Widget _buildClosingSectionCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBgColor,
+    required String title,
+    required String subtitle,
+    required bool isCollapsed,
+    required VoidCallback onToggle,
+    required Widget expandedContent,
+  }) {
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFD5D7E5)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 74),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: iconBgColor,
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(icon, color: iconColor, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              color: kBrand950,
+                              height: 1.15,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w600,
+                              height: 1.15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      isCollapsed ? Icons.expand_more : Icons.expand_less,
+                      color: kBrand950,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (!isCollapsed) ...[
+            const Divider(height: 1, color: Color(0xFFE7E9F4)),
+            expandedContent,
+          ],
+        ],
+      ),
+    );
+  }
+
   /// ==========================================================================
   /// ABA 4: FECHAMENTO (PROFISSIONAIS, PACIENTES E PRONTUÁRIOS COM SENHA)
   /// ==========================================================================
@@ -2313,33 +2474,190 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     }).toList();
 
     return ListView(
+      padding: const EdgeInsets.only(top: 2, bottom: 16),
       children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => _openMonthYearPickerDialog(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFD5D7E5)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 16, color: kBrand700),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Fechamento Mensal • ${svc.formatMonthYearPt(svc.currentMonth)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      color: kBrand950,
+        // Título diferenciado próximo à barra superior com seletor de mês
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 2, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'FECHAMENTO MENSAL',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.9,
+                        color: kBrand700,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 1),
+                    Text(
+                      svc.formatMonthYearPt(svc.currentMonth),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: kBrand950,
+                        height: 1.1,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => _openMonthYearPickerDialog(context),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: kBrand50,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: kBrand100),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.calendar_month, size: 14, color: kBrand700),
+                      SizedBox(width: 5),
+                      Text(
+                        'Período',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: kBrand700,
+                        ),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(Icons.arrow_drop_down, size: 17, color: kBrand700),
+                    ],
                   ),
                 ),
-                const Icon(Icons.arrow_drop_down, color: kBrand700),
+              ),
+            ],
+          ),
+        ),
+
+        // 1. Fechamento dos Profissionais (Horas)
+        _buildClosingSectionCard(
+          icon: Icons.medical_services,
+          iconColor: kBrand700,
+          iconBgColor: kBrand50,
+          title: 'Fechamento dos Profissionais',
+          subtitle: 'Plantões e carga horária no mês',
+          isCollapsed: svc.statsProfessionalsCollapsed,
+          onToggle: () => setState(() => svc.statsProfessionalsCollapsed =
+              !svc.statsProfessionalsCollapsed),
+          expandedContent: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(kContainer),
+              headingRowHeight: 36,
+              dataRowMinHeight: 34,
+              dataRowMaxHeight: 40,
+              columnSpacing: 14,
+              columns: const [
+                DataColumn(
+                    label: Text('PROFISSIONAL',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+                DataColumn(
+                    label: Text('DIURNOS',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+                DataColumn(
+                    label: Text('NOTURNOS',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+                DataColumn(
+                    label: Text('ROTINA',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+                DataColumn(
+                    label: Text('REFORÇO',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+                DataColumn(
+                    label: Text('TOTAL',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w900, fontSize: 11))),
+              ],
+              rows: svc.doctors.map((doc) {
+                final docShifts = svc.shifts
+                    .where((s) =>
+                        s.doctorId == doc.id &&
+                        s.date.startsWith(svc.currentMonth))
+                    .toList();
+                final d6 = docShifts
+                    .where((s) =>
+                        s.shiftType == 'morning' || s.shiftType == 'afternoon')
+                    .length;
+                final n12 =
+                    docShifts.where((s) => s.shiftType == 'night').length;
+                final r6 =
+                    docShifts.where((s) => s.shiftType == 'routine').length;
+                final e4 =
+                    docShifts.where((s) => s.shiftType == 'evening').length;
+                final totalH = (d6 * 6) + (n12 * 12) + (r6 * 6) + (e4 * 4);
+                return DataRow(
+                  cells: [
+                    DataCell(Text(doc.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 12))),
+                    DataCell(Text('$d6')),
+                    DataCell(Text('$n12')),
+                    DataCell(Text('$r6')),
+                    DataCell(Text('$e4')),
+                    DataCell(Text('${totalH}h',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900, color: kBrand950))),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // 2. Indicadores Mensais de Pacientes
+        _buildClosingSectionCard(
+          icon: Icons.analytics,
+          iconColor: kScRed600,
+          iconBgColor: kScRed50,
+          title: 'Indicadores Mensais de Pacientes',
+          subtitle:
+              '${occupiedBeds.length} internadas • $occupancyPct% de ocupação',
+          isCollapsed: svc.statsPatientsCollapsed,
+          onToggle: () => setState(
+              () => svc.statsPatientsCollapsed = !svc.statsPatientsCollapsed),
+          expandedContent: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildKpiCard(
+                  'Pacientes Atendidas / Internadas',
+                  '${svc.allMedicalRecordsSorted.length} registradas (${occupiedBeds.length} internadas)',
+                  'Taxa de ocupação atual: $occupancyPct%',
+                ),
+                const SizedBox(height: 8),
+                _buildKpiCard(
+                  'Tempo Médio Estimado de Internação',
+                  '42h (1,8 dias)',
+                  'Parto Normal / Cesárea / Tratamento Clínico',
+                ),
+                const SizedBox(height: 8),
+                _buildKpiCard(
+                  'Gestantes de Alto Risco',
+                  '${occupiedBeds.where((b) => b.altoRisco.trim().isNotEmpty).length} pacientes ativas',
+                  'Principais: HAC, DMG, ITU, RCIU, Pré-eclâmpsia',
+                ),
               ],
             ),
           ),
@@ -2347,211 +2665,19 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         const SizedBox(height: 10),
 
-        // 1. Fechamento dos Profissionais (Colapsável)
-        Material(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFD5D7E5)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              ListTile(
-                dense: true,
-                onTap: () => setState(() => svc.statsProfessionalsCollapsed =
-                    !svc.statsProfessionalsCollapsed),
-                leading:
-                    const Icon(Icons.medical_services, color: kBrand700, size: 20),
-                title: const Text(
-                  'Fechamento dos Profissionais (Horas)',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      color: kBrand950),
-                ),
-                trailing: Icon(svc.statsProfessionalsCollapsed
-                    ? Icons.expand_more
-                    : Icons.expand_less),
-              ),
-              if (!svc.statsProfessionalsCollapsed)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(kContainer),
-                    headingRowHeight: 36,
-                    dataRowMinHeight: 34,
-                    dataRowMaxHeight: 40,
-                    columnSpacing: 14,
-                    columns: const [
-                      DataColumn(
-                          label: Text('PROFISSIONAL',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                      DataColumn(
-                          label: Text('DIURNOS',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                      DataColumn(
-                          label: Text('NOTURNOS',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                      DataColumn(
-                          label: Text('ROTINA',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                      DataColumn(
-                          label: Text('REFORÇO',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                      DataColumn(
-                          label: Text('TOTAL',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900, fontSize: 11))),
-                    ],
-                    rows: svc.doctors.map((doc) {
-                      final docShifts = svc.shifts
-                          .where((s) =>
-                              s.doctorId == doc.id &&
-                              s.date.startsWith(svc.currentMonth))
-                          .toList();
-                      final d6 = docShifts
-                          .where((s) =>
-                              s.shiftType == 'morning' ||
-                              s.shiftType == 'afternoon')
-                          .length;
-                      final n12 = docShifts
-                          .where((s) => s.shiftType == 'night')
-                          .length;
-                      final r6 = docShifts
-                          .where((s) => s.shiftType == 'routine')
-                          .length;
-                      final e4 = docShifts
-                          .where((s) => s.shiftType == 'evening')
-                          .length;
-                      final totalH =
-                          (d6 * 6) + (n12 * 12) + (r6 * 6) + (e4 * 4);
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(doc.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w800, fontSize: 12))),
-                          DataCell(Text('$d6')),
-                          DataCell(Text('$n12')),
-                          DataCell(Text('$r6')),
-                          DataCell(Text('$e4')),
-                          DataCell(Text('${totalH}h',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: kBrand950))),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        // 2. Indicadores Mensais de Pacientes (Colapsável)
-        Material(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFD5D7E5)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              ListTile(
-                dense: true,
-                onTap: () => setState(() =>
-                    svc.statsPatientsCollapsed = !svc.statsPatientsCollapsed),
-                leading: const Icon(Icons.analytics, color: kScRed600, size: 20),
-                title: const Text(
-                  'Indicadores Mensais de Pacientes',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      color: kBrand950),
-                ),
-                trailing: Icon(svc.statsPatientsCollapsed
-                    ? Icons.expand_more
-                    : Icons.expand_less),
-              ),
-              if (!svc.statsPatientsCollapsed)
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildKpiCard(
-                        'Pacientes Atendidas / Internadas',
-                        '${svc.allMedicalRecordsSorted.length} registradas (${occupiedBeds.length} internadas)',
-                        'Taxa de ocupação atual: $occupancyPct%',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildKpiCard(
-                        'Tempo Médio Estimado de Internação',
-                        '42h (1,8 dias)',
-                        'Parto Normal / Cesárea / Tratamento Clínico',
-                      ),
-                      const SizedBox(height: 8),
-                      _buildKpiCard(
-                        'Gestantes de Alto Risco',
-                        '${occupiedBeds.where((b) => b.altoRisco.trim().isNotEmpty).length} pacientes ativas',
-                        'Principais: HAC, DMG, ITU, RCIU, Pré-eclâmpsia',
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
         // 3. PRONTUÁRIOS (Cadastrados por Nome, com Data de Inserção e de Alta, Protegido por Senha)
-        Material(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFD5D7E5)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ListTile(
-                dense: true,
-                onTap: () => setState(() => svc.statsProntuariosCollapsed =
-                    !svc.statsProntuariosCollapsed),
-                leading: Icon(
-                  svc.isProntuariosUnlocked ? Icons.folder_shared : Icons.lock,
-                  color: kBrand700,
-                  size: 20,
-                ),
-                title: Text(
-                  'Prontuários (${svc.allMedicalRecordsSorted.length} pacientes)',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      color: kBrand950),
-                ),
-                subtitle: Text(
-                  svc.isProntuariosUnlocked
-                      ? 'Histórico nominal com data de inserção e alta'
-                      : 'Protegido por senha • Toque para desbloquear',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: Icon(svc.statsProntuariosCollapsed
-                    ? Icons.expand_more
-                    : Icons.expand_less),
-              ),
-              if (!svc.statsProntuariosCollapsed)
-                Padding(
+        _buildClosingSectionCard(
+          icon: svc.isProntuariosUnlocked ? Icons.folder_shared : Icons.lock,
+          iconColor: kBrand700,
+          iconBgColor: kBrand50,
+          title: 'Prontuários (${svc.allMedicalRecordsSorted.length} pacientes)',
+          subtitle: svc.isProntuariosUnlocked
+              ? 'Histórico nominal com inserção e alta'
+              : 'Protegido por senha • Toque para abrir',
+          isCollapsed: svc.statsProntuariosCollapsed,
+          onToggle: () => setState(() =>
+              svc.statsProntuariosCollapsed = !svc.statsProntuariosCollapsed),
+          expandedContent: Padding(
                   padding: const EdgeInsets.all(12),
                   child: !svc.isProntuariosUnlocked
                       ? Column(
@@ -2702,8 +2828,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                               ),
                           ],
                         ),
-                ),
-            ],
           ),
         ),
       ],
@@ -3786,8 +3910,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            final isNotifying = svc.notificationsEnabled &&
+            final hasChosenProfile =
+                svc.selectedNotificationDoctorId.isNotEmpty &&
+                    svc.selectedNotificationDoctorId != 'ALL';
+            final isOwnProfile = hasChosenProfile &&
                 svc.selectedNotificationDoctorId == doc.id;
+            final isNotifying = svc.notificationsEnabled && isOwnProfile;
+            final canOfferNotif = !hasChosenProfile || isOwnProfile;
             return Padding(
               padding: EdgeInsets.only(
                 left: 18,
@@ -3844,82 +3973,84 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: kScRed50,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: kScRed100),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'Receber Notificações deste Profissional (Confirme com CRM)',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                                color: kBrand950),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: crmInputCtrl,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'CRM do Profissional',
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.white,
+                    if (canOfferNotif) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: kScRed50,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: kScRed100),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Receber Notificações deste Profissional (Confirme com CRM)',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12,
+                                  color: kBrand950),
                             ),
-                          ),
-                          if (errorMsg != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              errorMsg!,
-                              style: const TextStyle(
-                                  color: kScRed600,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: crmInputCtrl,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'CRM do Profissional',
+                                isDense: true,
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                            ),
+                            if (errorMsg != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                errorMsg!,
+                                style: const TextStyle(
+                                    color: kScRed600,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800),
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: isNotifying
+                                    ? Colors.green.shade700
+                                    : kScRed600,
+                              ),
+                              onPressed: () async {
+                                final err = svc.confirmProfileWithCrm(
+                                  doctor: doc,
+                                  googleEmail: svc.googleUserEmail ??
+                                      'medico@santacasapg.br',
+                                  googleName: svc.googleUserName ?? doc.name,
+                                  crmInput: crmInputCtrl.text,
+                                );
+                                if (err != null) {
+                                  setModalState(() => errorMsg = err);
+                                  return;
+                                }
+                                await svc.requestNativeNotificationPermission(
+                                    doctor: doc);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                              },
+                              icon: Icon(isNotifying
+                                  ? Icons.notifications_active
+                                  : Icons.notification_add),
+                              label: Text(
+                                isNotifying
+                                    ? 'Recebendo notificações ✓'
+                                    : 'Confirmar CRM e Receber Notificações',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800),
+                              ),
                             ),
                           ],
-                          const SizedBox(height: 10),
-                          FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: isNotifying
-                                  ? Colors.green.shade700
-                                  : kScRed600,
-                            ),
-                            onPressed: () async {
-                              final err = svc.confirmProfileWithCrm(
-                                doctor: doc,
-                                googleEmail:
-                                    svc.googleUserEmail ?? 'medico@santacasapg.br',
-                                googleName: svc.googleUserName ?? doc.name,
-                                crmInput: crmInputCtrl.text,
-                              );
-                              if (err != null) {
-                                setModalState(() => errorMsg = err);
-                                return;
-                              }
-                              await svc.requestNativeNotificationPermission(
-                                  doctor: doc);
-                              if (ctx.mounted) Navigator.pop(ctx);
-                            },
-                            icon: Icon(isNotifying
-                                ? Icons.notifications_active
-                                : Icons.notification_add),
-                            label: Text(
-                              isNotifying
-                                  ? 'Recebendo notificações ✓'
-                                  : 'Confirmar CRM e Receber Notificações',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

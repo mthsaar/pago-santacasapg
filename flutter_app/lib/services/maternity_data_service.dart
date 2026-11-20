@@ -1168,6 +1168,7 @@ class MaternityDataService extends ChangeNotifier {
     firebaseUid = null;
     googleUserEmail = null;
     googleUserName = null;
+    selectedNotificationDoctorId = 'ALL';
     hasCompletedOnboarding = false;
     notifyListeners();
   }
