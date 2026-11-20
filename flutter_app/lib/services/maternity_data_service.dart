@@ -1349,6 +1349,26 @@ class MaternityDataService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Bypass rápido de login para testes em dispositivo (S10e e iPhone)
+  void enterTestModeBypassLogin() {
+    DoctorModel? target;
+    for (final d in doctors) {
+      if (d.name.toLowerCase().contains('matheus')) {
+        target = d;
+        break;
+      }
+    }
+    target ??= doctors.isNotEmpty ? doctors.first : null;
+    if (target != null) {
+      selectedNotificationDoctorId = target.id;
+      googleUserName = target.name;
+    }
+    googleUserEmail ??= 'teste@santacasapg.br';
+    notificationsEnabled = true;
+    hasCompletedOnboarding = true;
+    notifyListeners();
+  }
+
   Future<void> signOutFirebase() async {
     try {
       if (!kIsWeb) {

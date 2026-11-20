@@ -4,7 +4,8 @@ import 'package:excel/excel.dart' as xl;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show Factory, TargetPlatform, defaultTargetPlatform, kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -725,6 +726,27 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                       ),
                     ),
                   ],
+
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: kBrand700,
+                      side: const BorderSide(color: kBrand100),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    onPressed: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      svc.enterTestModeBypassLogin();
+                    },
+                    icon: const Icon(Icons.bolt, size: 17),
+                    label: const Text(
+                      'Entrar sem Login (Modo Teste)',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -754,8 +776,177 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   String _doctorSearchQuery = '';
   String _prontuarioSearchQuery = '';
   final Map<int, Uint8List> _decodedPhotoCache = {};
+  MethodChannel? _nativeTabChannel;
 
   MaternityDataService get svc => widget.service;
+
+  void _selectTab(int idx) {
+    if (_currentTab == idx) return;
+    setState(() => _currentTab = idx);
+    _nativeTabChannel?.invokeMethod('setSelectedIndex', idx);
+  }
+
+  void _onNativeTabBarCreated(int viewId) {
+    final ch = MethodChannel('br.com.santacasapg/native_tab_bar_$viewId');
+    _nativeTabChannel = ch;
+    ch.setMethodCallHandler((call) async {
+      if (call.method == 'onTabSelected' && call.arguments is int) {
+        final idx = call.arguments as int;
+        if (mounted && _currentTab != idx) {
+          setState(() => _currentTab = idx);
+        }
+      }
+      return null;
+    });
+  }
+
+  Future<int?> _pickParityValue(
+    BuildContext context, {
+    required String letter,
+    required int currentValue,
+  }) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (isIOSPlatform) {
+      var tempVal = currentValue.clamp(0, 20);
+      return showCupertinoModalPopup<int>(
+        context: context,
+        builder: (popupCtx) => LiquidGlassSurface(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          tintColor: CupertinoColors.systemBackground
+              .resolveFrom(popupCtx)
+              .withValues(alpha: 0.92),
+          blurSigma: 24,
+          child: SizedBox(
+            height: 280,
+            child: SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFE5E7F0)),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          onPressed: () => Navigator.pop(popupCtx),
+                          child: const Text('Cancelar'),
+                        ),
+                        Text(
+                          'Paridade • $letter',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: kBrand950,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          onPressed: () => Navigator.pop(popupCtx, tempVal),
+                          child: const Text(
+                            'Concluir',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: CupertinoPicker(
+                      scrollController: FixedExtentScrollController(
+                        initialItem: tempVal,
+                      ),
+                      itemExtent: 40,
+                      magnification: 1.12,
+                      useMagnifier: true,
+                      onSelectedItemChanged: (idx) => tempVal = idx,
+                      children: [
+                        for (int n = 0; n <= 20; n++)
+                          Center(
+                            child: Text(
+                              n == 0 ? '0 (oculta $letter)' : '$letter$n',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: n == 0 ? Colors.black45 : kBrand950,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Android: grade Material 3 instantânea (1 toque sem travamentos)
+    return showDialog<int>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: Text(
+          'Selecionar $letter (0 oculta)',
+          style: const TextStyle(
+              fontWeight: FontWeight.w900, fontSize: 15, color: kBrand950),
+        ),
+        content: SizedBox(
+          width: 280,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              for (int n = 0; n <= 20; n++)
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => Navigator.pop(dCtx, n),
+                  child: Container(
+                    width: n == 0 ? 256 : 56,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: n == currentValue
+                          ? kBrand700
+                          : (n == 0 ? kContainerLow : kBrand50),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: n == currentValue ? kBrand700 : kBrand100,
+                      ),
+                    ),
+                    child: Text(
+                      n == 0 ? '0 (Ocultar letra $letter)' : '$letter$n',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        color: n == currentValue
+                            ? Colors.white
+                            : (n == 0 ? Colors.black54 : kBrand950),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<DateTime?> _pickNativeDate(
     BuildContext context, {
@@ -1056,85 +1247,18 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     if (isIOSPlatform) {
       return SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-          child: LiquidGlassSurface(
-            borderRadius: BorderRadius.circular(30),
-            tintColor: Colors.white.withValues(alpha: 0.68),
-            borderColor: Colors.white.withValues(alpha: 0.9),
-            blurSigma: 26,
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                children: [
-                  for (final item in items)
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => setState(() => _currentTab = item.idx),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: _currentTab == item.idx
-                                ? Colors.white.withValues(alpha: 0.88)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(24),
-                            border: _currentTab == item.idx
-                                ? Border.all(
-                                    color: Colors.white,
-                                    width: 1,
-                                  )
-                                : null,
-                            boxShadow: _currentTab == item.idx
-                                ? [
-                                    BoxShadow(
-                                      color: kBrand950.withValues(alpha: 0.08),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _currentTab == item.idx
-                                    ? item.activeIcon
-                                    : item.icon,
-                                size: 20,
-                                color: _currentTab == item.idx
-                                    ? kBrand700
-                                    : Colors.black87,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  height: 1.05,
-                                  fontWeight: _currentTab == item.idx
-                                      ? FontWeight.w900
-                                      : FontWeight.w700,
-                                  color: _currentTab == item.idx
-                                      ? kBrand950
-                                      : Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+        child: SizedBox(
+          height: 68,
+          child: UiKitView(
+            viewType: 'br.com.santacasapg/native_tab_bar',
+            creationParams: <String, dynamic>{'selectedIndex': _currentTab},
+            creationParamsCodec: const StandardMessageCodec(),
+            gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+              Factory<EagerGestureRecognizer>(
+                () => EagerGestureRecognizer(),
               ),
-            ),
+            },
+            onPlatformViewCreated: _onNativeTabBarCreated,
           ),
         ),
       );
@@ -1154,7 +1278,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               for (final item in items)
                 Expanded(
                   child: InkWell(
-                    onTap: () => setState(() => _currentTab = item.idx),
+                    onTap: () => _selectTab(item.idx),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 6, bottom: 4),
                       child: Column(
@@ -3653,7 +3777,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     var parsedAdmission = ParsedAdmissionReason.parse(bed.internacaoPor);
 
     final outrosRiskCtrl = TextEditingController(text: parsedRisk.otherText);
-    String? activeParityLetter;
     bool showReminderBox = false;
     bool showReminderInfo = false;
     final remTextCtrl = TextEditingController();
@@ -3682,7 +3805,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               parsedRisk = ParsedHighRisk.parse(bed.altoRisco);
               parsedAdmission = ParsedAdmissionReason.parse(bed.internacaoPor);
               outrosRiskCtrl.text = parsedRisk.otherText;
-              activeParityLetter = null;
             }
 
             DateTime parseIsoDateOrNow(String iso) {
@@ -3814,26 +3936,31 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
             Widget buildParityTile(String letter) {
               final v = parsedParity.values[letter] ?? 0;
-              final isOpen = activeParityLetter == letter;
               return Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  onTap: () => setModalState(() {
-                    activeParityLetter = isOpen ? null : letter;
-                  }),
+                  onTap: () async {
+                    final picked = await _pickParityValue(
+                      ctx,
+                      letter: letter,
+                      currentValue: v,
+                    );
+                    if (picked != null && ctx.mounted) {
+                      setModalState(() {
+                        parsedParity.values[letter] = picked;
+                        parCtrl.text = parsedParity.toSheetString();
+                      });
+                    }
+                  },
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isOpen
-                          ? kBrand100
-                          : (v > 0 ? kBrand50 : Colors.white),
+                      color: v > 0 ? kBrand50 : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isOpen || v > 0
-                            ? kBrand700
-                            : const Color(0xFFC5C6D4),
-                        width: isOpen || v > 0 ? 2 : 1,
+                        color: v > 0 ? kBrand700 : const Color(0xFFC5C6D4),
+                        width: v > 0 ? 2 : 1,
                       ),
                     ),
                     child: Column(
@@ -4012,99 +4139,6 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                               buildParityTile('M'),
                             ],
                           ),
-                          if (activeParityLetter != null) ...[
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                    color: kBrand700.withValues(alpha: 0.4)),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Selecionar $activeParityLetter (role 0–20)',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12,
-                                          color: kBrand950,
-                                        ),
-                                      ),
-                                      TextButton(
-                                        style: TextButton.styleFrom(
-                                          visualDensity: VisualDensity.compact,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 2),
-                                        ),
-                                        onPressed: () => setModalState(
-                                            () => activeParityLetter = null),
-                                        child: const Text(
-                                          'Concluir',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(
-                                    height: 132,
-                                    child: CupertinoPicker(
-                                      key: ValueKey<String>(activeParityLetter!),
-                                      scrollController:
-                                          FixedExtentScrollController(
-                                        initialItem: parsedParity
-                                                .values[activeParityLetter!] ??
-                                            0,
-                                      ),
-                                      itemExtent: 38,
-                                      magnification: 1.12,
-                                      useMagnifier: true,
-                                      selectionOverlay:
-                                          CupertinoPickerDefaultSelectionOverlay(
-                                        background:
-                                            kBrand50.withValues(alpha: 0.6),
-                                      ),
-                                      onSelectedItemChanged: (numVal) {
-                                        final letter = activeParityLetter!;
-                                        setModalState(() {
-                                          parsedParity.values[letter] = numVal;
-                                          parCtrl.text =
-                                              parsedParity.toSheetString();
-                                        });
-                                      },
-                                      children: [
-                                        for (int numVal = 0;
-                                            numVal <= 20;
-                                            numVal++)
-                                          Center(
-                                            child: Text(
-                                              numVal == 0
-                                                  ? '0 (oculta ${activeParityLetter!})'
-                                                  : '${activeParityLetter!}$numVal',
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w900,
-                                                color: numVal == 0
-                                                    ? Colors.black45
-                                                    : kBrand950,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 8),
                           buildPreviewBox(
                             parCtrl.text,
