@@ -445,22 +445,24 @@ class MaternityDataService extends ChangeNotifier {
       final fsUrl = Uri.parse(
         'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/doctors/${doc.id}',
       );
-      await http.patch(
-        fsUrl,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'fields': {
-            'id': {'stringValue': doc.id},
-            'name': {'stringValue': doc.name},
-            'phone': {'stringValue': doc.phone},
-            'crm': {'stringValue': doc.crm},
-            'specialty': {'stringValue': doc.specialty},
-            'photo_url': {'stringValue': doc.photoUrl},
-            'linked_google_email': {'stringValue': doc.linkedGoogleEmail},
-            'linked_google_name': {'stringValue': doc.linkedGoogleName},
-          }
-        }),
-      );
+      await http
+          .patch(
+            fsUrl,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'fields': {
+                'id': {'stringValue': doc.id},
+                'name': {'stringValue': doc.name},
+                'phone': {'stringValue': doc.phone},
+                'crm': {'stringValue': doc.crm},
+                'specialty': {'stringValue': doc.specialty},
+                'photo_url': {'stringValue': doc.photoUrl},
+                'linked_google_email': {'stringValue': doc.linkedGoogleEmail},
+                'linked_google_name': {'stringValue': doc.linkedGoogleName},
+              }
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
 
@@ -1047,7 +1049,12 @@ class MaternityDataService extends ChangeNotifier {
         firebaseUid = current.uid;
         googleUserEmail = current.email?.toLowerCase();
         googleUserName = current.displayName ?? current.email;
+        await _pullDoctorsFromFirestoreRest();
         _tryMatchDoctorFromAuthenticatedEmail();
+        if (selectedNotificationDoctorId != 'ALL') {
+          hasCompletedOnboarding = true;
+        }
+        notifyListeners();
       }
 
       FirebaseAuth.instance.authStateChanges().listen((User? user) {
@@ -1056,6 +1063,9 @@ class MaternityDataService extends ChangeNotifier {
           googleUserEmail = user.email?.toLowerCase();
           googleUserName = user.displayName ?? user.email;
           _tryMatchDoctorFromAuthenticatedEmail();
+          if (selectedNotificationDoctorId != 'ALL') {
+            hasCompletedOnboarding = true;
+          }
         } else {
           firebaseUid = null;
           googleUserEmail = null;

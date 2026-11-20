@@ -747,8 +747,185 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   bool _isTableFullscreen = false;
   String _doctorSearchQuery = '';
   String _prontuarioSearchQuery = '';
+  final Map<int, Uint8List> _decodedPhotoCache = {};
 
   MaternityDataService get svc => widget.service;
+
+  Future<DateTime?> _pickNativeDate(
+    BuildContext context, {
+    required DateTime initialDate,
+    required DateTime firstDate,
+    required DateTime lastDate,
+  }) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!isIOSPlatform) {
+      return showDatePicker(
+        context: context,
+        initialDate: initialDate,
+        firstDate: firstDate,
+        lastDate: lastDate,
+      );
+    }
+
+    var clampedInitial = initialDate;
+    if (clampedInitial.isBefore(firstDate)) clampedInitial = firstDate;
+    if (clampedInitial.isAfter(lastDate)) clampedInitial = lastDate;
+    var tempDate = clampedInitial;
+
+    return showCupertinoModalPopup<DateTime>(
+      context: context,
+      builder: (popupCtx) => LiquidGlassSurface(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        tintColor: CupertinoColors.systemBackground
+            .resolveFrom(popupCtx)
+            .withValues(alpha: 0.92),
+        blurSigma: 24,
+        child: SizedBox(
+          height: 295,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE5E7F0)),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        onPressed: () => Navigator.pop(popupCtx),
+                        child: const Text('Cancelar'),
+                      ),
+                      const Text(
+                        'Selecionar Data',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: kBrand950,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        onPressed: () => Navigator.pop(popupCtx, tempDate),
+                        child: const Text(
+                          'Confirmar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.date,
+                    dateOrder: DatePickerDateOrder.dmy,
+                    initialDateTime: clampedInitial,
+                    minimumDate: firstDate,
+                    maximumDate: lastDate,
+                    onDateTimeChanged: (d) => tempDate = d,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<TimeOfDay?> _pickNativeTime(
+    BuildContext context, {
+    required TimeOfDay initialTime,
+  }) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (!isIOSPlatform) {
+      return showTimePicker(
+        context: context,
+        initialTime: initialTime,
+        builder: (timeCtx, child) => MediaQuery(
+          data: MediaQuery.of(timeCtx).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        ),
+      );
+    }
+
+    var tempTime = initialTime;
+    final initialDateTime =
+        DateTime(2026, 1, 1, initialTime.hour, initialTime.minute);
+
+    return showCupertinoModalPopup<TimeOfDay>(
+      context: context,
+      builder: (popupCtx) => LiquidGlassSurface(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        tintColor: CupertinoColors.systemBackground
+            .resolveFrom(popupCtx)
+            .withValues(alpha: 0.92),
+        blurSigma: 24,
+        child: SizedBox(
+          height: 295,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE5E7F0)),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        onPressed: () => Navigator.pop(popupCtx),
+                        child: const Text('Cancelar'),
+                      ),
+                      const Text(
+                        'Selecionar Horário',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: kBrand950,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        onPressed: () => Navigator.pop(popupCtx, tempTime),
+                        child: const Text(
+                          'Confirmar',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    use24hFormat: true,
+                    initialDateTime: initialDateTime,
+                    onDateTimeChanged: (d) =>
+                        tempTime = TimeOfDay.fromDateTime(d),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -782,19 +959,17 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           ),
         ),
       ),
-      // Floating Action Button: estilo Liquid Glass no iOS e Material no Android/Web
+      // Floating Action Button: apenas "+", redondo Liquid Glass no iOS e mais quadrado padrão Material 3 no Android
       floatingActionButton: _isTableFullscreen
           ? null
           : (_currentTab == 1
               ? _buildPlatformFab(
-                  label: 'Adicionar Evolução',
-                  icon: Icons.note_add,
+                  tooltip: 'Adicionar Evolução',
                   onPressed: () => _openEvolutionModal(context, 'PRÉ 1'),
                 )
               : (_currentTab == 2 && svc.isEditorMode
                   ? _buildPlatformFab(
-                      label: 'Novo Médico',
-                      icon: Icons.person_add,
+                      tooltip: 'Novo Médico',
                       onPressed: () => _openAddOrEditDoctorModal(context, null),
                     )
                   : null)),
@@ -806,45 +981,39 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   Widget _buildPlatformFab({
-    required String label,
-    required IconData icon,
+    required String tooltip,
     required VoidCallback onPressed,
   }) {
     if (!isIOSPlatform) {
-      return FloatingActionButton.extended(
+      return FloatingActionButton(
+        tooltip: tooltip,
         backgroundColor: kBrand700,
         foregroundColor: Colors.white,
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        label: Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         ),
+        onPressed: onPressed,
+        child: const Icon(Icons.add, size: 28),
       );
     }
 
-    return GestureDetector(
-      onTap: onPressed,
-      child: LiquidGlassSurface(
-        borderRadius: BorderRadius.circular(999),
-        tintColor: kBrand700.withValues(alpha: 0.78),
-        borderColor: Colors.white.withValues(alpha: 0.55),
-        blurSigma: 20,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 19, color: Colors.white),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-              ),
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: LiquidGlassSurface(
+          borderRadius: BorderRadius.circular(999),
+          tintColor: kBrand700.withValues(alpha: 0.78),
+          borderColor: Colors.white.withValues(alpha: 0.65),
+          blurSigma: 20,
+          padding: EdgeInsets.zero,
+          child: const SizedBox(
+            width: 56,
+            height: 56,
+            child: Center(
+              child: Icon(Icons.add, size: 28, color: Colors.white),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2238,12 +2407,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       final commaIdx = photo.indexOf(',');
       if (commaIdx != -1) {
         try {
-          final bytes = base64Decode(photo.substring(commaIdx + 1));
+          final key = photo.hashCode;
+          final bytes = _decodedPhotoCache[key] ??
+              (_decodedPhotoCache[key] =
+                  base64Decode(photo.substring(commaIdx + 1)));
           imageWidget = Image.memory(
             bytes,
             width: radius * 2,
             height: radius * 2,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
           );
         } catch (_) {}
       }
@@ -2565,12 +2738,14 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     if (!['GO', 'Pediatra', 'Anestesista'].contains(specialty)) {
       specialty = 'GO';
     }
+    bool isPickingPhoto = false;
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor:
-          isIOSPlatform ? Colors.white.withValues(alpha: 0.9) : Colors.white,
+          isIOSPlatform ? Colors.white.withValues(alpha: 0.92) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
@@ -2616,26 +2791,64 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             runSpacing: 6,
                             children: [
                               OutlinedButton.icon(
-                                onPressed: () async {
-                                  final picker = ImagePicker();
-                                  final file = await picker.pickImage(
-                                    source: ImageSource.gallery,
-                                    maxWidth: 320,
-                                    maxHeight: 320,
-                                    imageQuality: 75,
-                                  );
-                                  if (file != null) {
-                                    final bytes = await file.readAsBytes();
-                                    setModalState(() {
-                                      photoUrl =
-                                          'data:image/jpeg;base64,${base64Encode(bytes)}';
-                                    });
-                                  }
-                                },
-                                icon: const Icon(Icons.photo_library_outlined,
-                                    size: 16),
-                                label: const Text('Escolher Foto',
-                                    style: TextStyle(fontSize: 12)),
+                                onPressed: (isPickingPhoto || isSaving)
+                                    ? null
+                                    : () async {
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
+                                        setModalState(
+                                            () => isPickingPhoto = true);
+                                        try {
+                                          final picker = ImagePicker();
+                                          final file = await picker.pickImage(
+                                            source: ImageSource.gallery,
+                                            maxWidth: 320,
+                                            maxHeight: 320,
+                                            imageQuality: 72,
+                                          );
+                                          if (file != null && ctx.mounted) {
+                                            final bytes =
+                                                await file.readAsBytes();
+                                            if (ctx.mounted) {
+                                              setModalState(() {
+                                                photoUrl =
+                                                    'data:image/jpeg;base64,${base64Encode(bytes)}';
+                                              });
+                                            }
+                                          }
+                                        } catch (_) {
+                                          if (ctx.mounted) {
+                                            ScaffoldMessenger.of(ctx)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Não foi possível carregar a imagem selecionada.',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        } finally {
+                                          if (ctx.mounted) {
+                                            setModalState(
+                                                () => isPickingPhoto = false);
+                                          }
+                                        }
+                                      },
+                                icon: isPickingPhoto
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.photo_library_outlined,
+                                        size: 16),
+                                label: Text(
+                                  isPickingPhoto
+                                      ? 'Abrindo...'
+                                      : 'Escolher Foto',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
                               ),
                               if (photoUrl.isNotEmpty)
                                 TextButton(
@@ -2749,26 +2962,41 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           child: FilledButton(
                             style: FilledButton.styleFrom(
                                 backgroundColor: kBrand700),
-                            onPressed: () async {
-                              final name = nameCtrl.text.trim();
-                              if (name.isEmpty) return;
-                              final model = DoctorModel(
-                                id: existing?.id ??
-                                    'doc_${DateTime.now().millisecondsSinceEpoch}',
-                                name: name,
-                                crm: crmCtrl.text.trim(),
-                                phone: phoneCtrl.text.trim(),
-                                specialty: specialty,
-                                photoUrl: photoUrl,
-                                linkedGoogleEmail:
-                                    existing?.linkedGoogleEmail ?? '',
-                                linkedGoogleName:
-                                    existing?.linkedGoogleName ?? '',
-                              );
-                              await svc.saveOrUpdateDoctorToCloud(model);
-                              if (ctx.mounted) Navigator.pop(ctx);
-                            },
-                            child: const Text('Salvar'),
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    FocusManager.instance.primaryFocus
+                                        ?.unfocus();
+                                    final name = nameCtrl.text.trim();
+                                    if (name.isEmpty) return;
+                                    setModalState(() => isSaving = true);
+                                    final model = DoctorModel(
+                                      id: existing?.id ??
+                                          'doc_${DateTime.now().millisecondsSinceEpoch}',
+                                      name: name,
+                                      crm: crmCtrl.text.trim(),
+                                      phone: phoneCtrl.text.trim(),
+                                      specialty: specialty,
+                                      photoUrl: photoUrl,
+                                      linkedGoogleEmail:
+                                          existing?.linkedGoogleEmail ?? '',
+                                      linkedGoogleName:
+                                          existing?.linkedGoogleName ?? '',
+                                    );
+                                    try {
+                                      await svc.saveOrUpdateDoctorToCloud(model);
+                                    } finally {
+                                      if (ctx.mounted) Navigator.pop(ctx);
+                                    }
+                                  },
+                            child: isSaving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Salvar'),
                           ),
                         ),
                       ],
@@ -4054,8 +4282,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                     valueText: formatIsoDateBr(
                                         parsedAdmission.birthDate),
                                     onTap: () async {
-                                      final picked = await showDatePicker(
-                                        context: ctx,
+                                      final picked = await _pickNativeDate(
+                                        ctx,
                                         initialDate: parseIsoDateOrNow(
                                             parsedAdmission.birthDate),
                                         firstDate: DateTime(2020),
@@ -4092,15 +4320,10 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                             ? parsedAdmission.birthTime
                                             : 'Selecionar hora',
                                     onTap: () async {
-                                      final picked = await showTimePicker(
-                                        context: ctx,
+                                      final picked = await _pickNativeTime(
+                                        ctx,
                                         initialTime: parseTimeOrDefault(
                                             parsedAdmission.birthTime),
-                                        builder: (timeCtx, child) => MediaQuery(
-                                          data: MediaQuery.of(timeCtx).copyWith(
-                                              alwaysUse24HourFormat: true),
-                                          child: child!,
-                                        ),
                                       );
                                       if (picked != null) {
                                         final hhmm =
@@ -4228,8 +4451,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                     valueText:
                                         formatIsoDateBr(remDateCtrl.text),
                                     onTap: () async {
-                                      final picked = await showDatePicker(
-                                        context: ctx,
+                                      final picked = await _pickNativeDate(
+                                        ctx,
                                         initialDate: parseIsoDateOrNow(
                                             remDateCtrl.text),
                                         firstDate: DateTime(2024),
@@ -4253,16 +4476,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                         ? remTimeCtrl.text
                                         : 'Selecionar hora',
                                     onTap: () async {
-                                      final picked = await showTimePicker(
-                                        context: ctx,
+                                      final picked = await _pickNativeTime(
+                                        ctx,
                                         initialTime: parseTimeOrDefault(
                                             remTimeCtrl.text,
                                             fallbackHour: 14),
-                                        builder: (timeCtx, child) => MediaQuery(
-                                          data: MediaQuery.of(timeCtx).copyWith(
-                                              alwaysUse24HourFormat: true),
-                                          child: child!,
-                                        ),
                                       );
                                       if (picked != null) {
                                         setModalState(() {
