@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/clinical_models.dart';
 
 const String kFirebaseProjectId = 'pago---santa-casa-pg';
@@ -57,7 +58,9 @@ class MaternityDataService extends ChangeNotifier {
   final List<List<ShiftEntryModel>> _redoStack = [];
   final List<Map<String, dynamic>> auditHistoryLogs = [];
 
+  bool cloudQuotaExceeded = false;
   Timer? _pollingTimer;
+  Timer? _firestoreRefreshTimer;
 
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
@@ -71,20 +74,84 @@ class MaternityDataService extends ChangeNotifier {
   MaternityDataService() {
     _seedInitialDoctorsAndSchedule();
     _seedInitialProvisionalMaternitySnapshot();
+    _restoreLocalDoctorCache();
     initSync();
+  }
+
+  Future<void> _restoreLocalDoctorCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('scpg_cached_doctors_v1');
+      if (raw == null || raw.isEmpty) return;
+      final list = jsonDecode(raw) as List<dynamic>;
+      if (list.isEmpty) return;
+      final restored = <DoctorModel>[];
+      for (final item in list) {
+        final m = Map<String, dynamic>.from(item as Map);
+        final name = (m['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+        restored.add(DoctorModel(
+          id: (m['id'] ?? '').toString(),
+          name: name,
+          phone: (m['phone'] ?? '').toString(),
+          crm: (m['crm'] ?? '').toString(),
+          specialty: (m['specialty'] ?? 'GO').toString(),
+          photoUrl: (m['photo_url'] ?? '').toString(),
+          linkedGoogleEmail: (m['linked_google_email'] ?? '').toString(),
+          linkedGoogleName: (m['linked_google_name'] ?? '').toString(),
+        ));
+      }
+      if (restored.isNotEmpty) {
+        doctors
+          ..clear()
+          ..addAll(restored);
+        doctors.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        _tryMatchDoctorFromAuthenticatedEmail();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveLocalDoctorCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(doctors
+          .map((d) => {
+                'id': d.id,
+                'name': d.name,
+                'phone': d.phone,
+                'crm': d.crm,
+                'specialty': d.specialty,
+                'photo_url': d.photoUrl,
+                'linked_google_email': d.linkedGoogleEmail,
+                'linked_google_name': d.linkedGoogleName,
+              })
+          .toList());
+      await prefs.setString('scpg_cached_doctors_v1', encoded);
+    } catch (_) {}
   }
 
   Future<void> initSync() async {
     await syncAllWithCloud();
+    // Planilha Google Sheets a cada 60s (grátis, não consome cota Firestore)
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      syncAllWithCloud();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      syncFromGoogleSheetAndFirestore();
+    });
+    // Firestore em intervalo longo (5 min) para não esgotar cota gratuita de leituras
+    _firestoreRefreshTimer?.cancel();
+    _firestoreRefreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      _pullDoctorsFromFirestoreRest();
+      _pullShiftsFromFirestoreRest();
+      _pullMedicalRecordsFromFirestoreRest();
     });
   }
 
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _firestoreRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -322,7 +389,13 @@ class MaternityDataService extends ChangeNotifier {
         'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/shifts?pageSize=300',
       );
       final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode == 429) {
+        cloudQuotaExceeded = true;
+        notifyListeners();
+        return;
+      }
       if (res.statusCode != 200) return;
+      cloudQuotaExceeded = false;
 
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final docs = decoded['documents'] as List<dynamic>? ?? [];
@@ -380,7 +453,13 @@ class MaternityDataService extends ChangeNotifier {
         'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/doctors?pageSize=200',
       );
       final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode == 429) {
+        cloudQuotaExceeded = true;
+        notifyListeners();
+        return;
+      }
       if (res.statusCode != 200) return;
+      cloudQuotaExceeded = false;
 
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final docs = decoded['documents'] as List<dynamic>? ?? [];
@@ -425,6 +504,8 @@ class MaternityDataService extends ChangeNotifier {
           ..clear()
           ..addAll(byId.values);
         doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        await _saveLocalDoctorCache();
+        _tryMatchDoctorFromAuthenticatedEmail();
         notifyListeners();
       }
     } catch (_) {}
@@ -439,6 +520,7 @@ class MaternityDataService extends ChangeNotifier {
       doctors.add(doc);
     }
     doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    unawaited(_saveLocalDoctorCache());
     notifyListeners();
 
     try {
@@ -686,7 +768,13 @@ class MaternityDataService extends ChangeNotifier {
         'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/maternity_admissions?pageSize=300',
       );
       final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode == 429) {
+        cloudQuotaExceeded = true;
+        notifyListeners();
+        return;
+      }
       if (res.statusCode != 200) return;
+      cloudQuotaExceeded = false;
 
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final docs = decoded['documents'] as List<dynamic>? ?? [];
@@ -905,7 +993,13 @@ class MaternityDataService extends ChangeNotifier {
         'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/maternity_patients?pageSize=100',
       );
       final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode == 429) {
+        cloudQuotaExceeded = true;
+        notifyListeners();
+        return;
+      }
       if (res.statusCode != 200) return;
+      cloudQuotaExceeded = false;
 
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final docs = decoded['documents'] as List<dynamic>? ?? [];
@@ -1044,11 +1138,26 @@ class MaternityDataService extends ChangeNotifier {
         serverClientId: kGoogleWebClientId,
       );
 
+      final prefs = await SharedPreferences.getInstance();
+      final savedUid = prefs.getString('scpg_onboarded_uid') ?? '';
+      final savedDocId = prefs.getString('scpg_selected_doctor_id') ?? '';
+      final savedNotif = prefs.getBool('scpg_notifications_enabled');
+
       final current = FirebaseAuth.instance.currentUser;
       if (current != null) {
         firebaseUid = current.uid;
         googleUserEmail = current.email?.toLowerCase();
         googleUserName = current.displayName ?? current.email;
+        if (savedUid == current.uid &&
+            savedDocId.isNotEmpty &&
+            savedDocId != 'ALL') {
+          selectedNotificationDoctorId = savedDocId;
+          if (savedNotif != null) {
+            notificationsEnabled = savedNotif;
+          }
+          hasCompletedOnboarding = true;
+          notifyListeners();
+        }
         await _pullDoctorsFromFirestoreRest();
         _tryMatchDoctorFromAuthenticatedEmail();
         if (selectedNotificationDoctorId != 'ALL') {
@@ -1115,6 +1224,7 @@ class MaternityDataService extends ChangeNotifier {
         googleUserName = user.displayName ?? user.email;
         await _pullDoctorsFromFirestoreRest();
         _tryMatchDoctorFromAuthenticatedEmail();
+        await _restoreOnboardingIfKnownUser(user.uid);
         notifyListeners();
         return null;
       }
@@ -1165,6 +1275,7 @@ class MaternityDataService extends ChangeNotifier {
         googleUserName = user.displayName ?? cleanEmail.split('@').first;
         await _pullDoctorsFromFirestoreRest();
         _tryMatchDoctorFromAuthenticatedEmail();
+        await _restoreOnboardingIfKnownUser(user.uid);
         notifyListeners();
         return null;
       }
@@ -1197,6 +1308,47 @@ class MaternityDataService extends ChangeNotifier {
     }
   }
 
+  Future<void> _restoreOnboardingIfKnownUser(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedUid = prefs.getString('scpg_onboarded_uid') ?? '';
+      final savedDocId = prefs.getString('scpg_selected_doctor_id') ?? '';
+      final savedNotif = prefs.getBool('scpg_notifications_enabled');
+      if (savedUid == uid && savedDocId.isNotEmpty && savedDocId != 'ALL') {
+        selectedNotificationDoctorId = savedDocId;
+        if (savedNotif != null) {
+          notificationsEnabled = savedNotif;
+        }
+        hasCompletedOnboarding = true;
+        return;
+      }
+      if (selectedNotificationDoctorId.isNotEmpty &&
+          selectedNotificationDoctorId != 'ALL') {
+        await prefs.setString('scpg_onboarded_uid', uid);
+        await prefs.setString(
+            'scpg_selected_doctor_id', selectedNotificationDoctorId);
+        await prefs.setBool('scpg_notifications_enabled', notificationsEnabled);
+        hasCompletedOnboarding = true;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> markOnboardingCompleted({
+    required DoctorModel doctor,
+    required bool enableNotifications,
+  }) async {
+    selectedNotificationDoctorId = doctor.id;
+    notificationsEnabled = enableNotifications;
+    hasCompletedOnboarding = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('scpg_onboarded_uid', firebaseUid ?? '');
+      await prefs.setString('scpg_selected_doctor_id', doctor.id);
+      await prefs.setBool('scpg_notifications_enabled', enableNotifications);
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> signOutFirebase() async {
     try {
       if (!kIsWeb) {
@@ -1205,6 +1357,12 @@ class MaternityDataService extends ChangeNotifier {
     } catch (_) {}
     try {
       await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('scpg_onboarded_uid');
+      await prefs.remove('scpg_selected_doctor_id');
+      await prefs.remove('scpg_notifications_enabled');
     } catch (_) {}
     firebaseUid = null;
     googleUserEmail = null;

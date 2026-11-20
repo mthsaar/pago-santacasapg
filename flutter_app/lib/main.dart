@@ -247,13 +247,14 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
 
     if (matchedDoc == null) {
       setState(() {
-        _errorText =
-            'CRM $crmDigits não encontrado no Corpo Clínico cadastrado. Confira o número ou solicite o cadastro do CRM à coordenação.';
+        _errorText = svc.cloudQuotaExceeded
+            ? 'O servidor Firebase atingiu o limite diário de leituras gratuitas (Erro 429). Não foi possível sincronizar seu CRM novo agora; aguarde a liberação da cota no Firebase.'
+            : 'CRM $crmDigits não encontrado no Corpo Clínico cadastrado. Confira o número ou solicite o cadastro do CRM à coordenação.';
       });
       return;
     }
 
-    // Pop-up de boas-vindas com o nome identificado pelo CRM e ativação das notificações
+    // Pop-up de boas-vindas com o nome identificado pelo CRM e ativação das notificações (apenas no login)
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -290,11 +291,13 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               FocusManager.instance.primaryFocus?.unfocus();
-              svc.notificationsEnabled = false;
               Navigator.pop(dCtx);
-              setState(() => svc.hasCompletedOnboarding = true);
+              await svc.markOnboardingCompleted(
+                doctor: matchedDoc,
+                enableNotifications: false,
+              );
             },
             child: const Text('Agora não'),
           ),
@@ -304,7 +307,10 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
               FocusManager.instance.primaryFocus?.unfocus();
               Navigator.pop(dCtx);
               await svc.requestNativeNotificationPermission(doctor: matchedDoc);
-              setState(() => svc.hasCompletedOnboarding = true);
+              await svc.markOnboardingCompleted(
+                doctor: matchedDoc,
+                enableNotifications: true,
+              );
             },
             icon: const Icon(Icons.check_circle_outline, size: 18),
             label: const Text('Ativar Notificações'),
@@ -2605,11 +2611,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: isNotifying
-                        ? kScRed600
+                        ? Colors.green.shade400
                         : (isIOSPlatform
                             ? Colors.white.withValues(alpha: 0.9)
                             : const Color(0xFFD5D7E5)),
-                    width: isNotifying ? 2 : 1,
+                    width: isNotifying ? 1.5 : 1,
                   ),
                 ),
                 child: Column(
@@ -2628,40 +2634,14 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        doc.name,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 14,
-                                          color: kBrand950,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (isNotifying) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: kScRed600,
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        ),
-                                        child: const Text(
-                                          '🔔 Ativo',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                Text(
+                                  doc.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    color: kBrand950,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   '${doc.specialty} • ${doc.crm.isNotEmpty ? "CRM ${doc.crm}" : "CRM não informado"} • ${doc.phone.isNotEmpty ? doc.phone : "Sem tel."}',
@@ -4631,162 +4611,196 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
-  /// Modal de Perfil do Médico com confirmação simples por CRM + Notificações
+  /// Popup centralizado com foto e dados do profissional (sem re-solicitar CRM/notificação)
   void _openDoctorProfileModal(BuildContext context, DoctorModel doc) {
-    final crmInputCtrl = TextEditingController(text: doc.crm);
-    String? errorMsg;
+    final hasChosenProfile = !kIsWeb &&
+        svc.selectedNotificationDoctorId.isNotEmpty &&
+        svc.selectedNotificationDoctorId != 'ALL';
+    final isOwnProfile =
+        hasChosenProfile && svc.selectedNotificationDoctorId == doc.id;
+    final isNotifying = !kIsWeb && svc.notificationsEnabled && isOwnProfile;
 
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            final hasChosenProfile = !kIsWeb &&
-                svc.selectedNotificationDoctorId.isNotEmpty &&
-                svc.selectedNotificationDoctorId != 'ALL';
-            final isOwnProfile = hasChosenProfile &&
-                svc.selectedNotificationDoctorId == doc.id;
-            final isNotifying =
-                !kIsWeb && svc.notificationsEnabled && isOwnProfile;
-            final canOfferNotif =
-                !kIsWeb && (!hasChosenProfile || isOwnProfile);
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 18,
-                right: 18,
-                top: 18,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 18,
+        final content = Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (svc.isEditorMode)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Editar cadastro',
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _openAddOrEditDoctorModal(context, doc);
+                      },
+                      icon: const Icon(Icons.edit_outlined, color: kBrand700),
+                    )
+                  else
+                    const SizedBox(width: 40),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: kBrand50,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      doc.specialty.isNotEmpty ? doc.specialty : 'GO',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: kBrand700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close, color: Colors.black54),
+                  ),
+                ],
               ),
-              child: SingleChildScrollView(
+              const SizedBox(height: 6),
+              Center(
+                child: _buildDoctorAvatarWidget(doc, radius: 44),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                doc.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  color: kBrand950,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: kContainerLow,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFD5D7E5)),
+                ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       children: [
-                        _buildDoctorAvatarWidget(doc, radius: 24),
-                        const SizedBox(width: 12),
+                        const Icon(Icons.badge_outlined,
+                            size: 16, color: kBrand700),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'CRM:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black54),
+                        ),
+                        const SizedBox(width: 6),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                doc.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 16,
-                                    color: kBrand950),
-                              ),
-                              Text(
-                                '${doc.specialty} • ${doc.crm.isNotEmpty ? "CRM ${doc.crm}" : "CRM não informado"} • ${doc.phone.isNotEmpty ? doc.phone : "Sem telefone"}',
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.black54),
-                              ),
-                            ],
+                          child: Text(
+                            doc.crm.isNotEmpty ? doc.crm : 'Não informado',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: kBrand950,
+                            ),
                           ),
                         ),
-                        if (svc.isEditorMode)
-                          IconButton(
-                            tooltip: 'Editar cadastro',
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _openAddOrEditDoctorModal(context, doc);
-                            },
-                            icon: const Icon(Icons.edit, color: kBrand700),
-                          ),
                       ],
                     ),
-                    if (canOfferNotif) ...[
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: kScRed50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: kScRed100),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.phone_outlined,
+                            size: 16, color: kBrand700),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Telefone:',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black54),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Text(
-                              'Receber Notificações deste Profissional (Confirme com CRM)',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 12,
-                                  color: kBrand950),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            doc.phone.isNotEmpty
+                                ? doc.phone
+                                : 'Não cadastrado',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: doc.phone.isNotEmpty
+                                  ? kBrand950
+                                  : Colors.black38,
                             ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: crmInputCtrl,
-                              keyboardType: TextInputType.number,
-                              textInputAction: TextInputAction.done,
-                              onTapOutside: (_) =>
-                                  FocusManager.instance.primaryFocus?.unfocus(),
-                              decoration: const InputDecoration(
-                                labelText: 'CRM do Profissional',
-                                isDense: true,
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
-                            ),
-                            if (errorMsg != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                errorMsg!,
-                                style: const TextStyle(
-                                    color: kScRed600,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800),
-                              ),
-                            ],
-                            const SizedBox(height: 10),
-                            FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: isNotifying
-                                    ? Colors.green.shade700
-                                    : kScRed600,
-                              ),
-                              onPressed: () async {
-                                final err = svc.confirmProfileWithCrm(
-                                  doctor: doc,
-                                  googleEmail: svc.googleUserEmail ??
-                                      'medico@santacasapg.br',
-                                  googleName: svc.googleUserName ?? doc.name,
-                                  crmInput: crmInputCtrl.text,
-                                );
-                                if (err != null) {
-                                  setModalState(() => errorMsg = err);
-                                  return;
-                                }
-                                await svc.requestNativeNotificationPermission(
-                                    doctor: doc);
-                                if (ctx.mounted) Navigator.pop(ctx);
-                              },
-                              icon: Icon(isNotifying
-                                  ? Icons.notifications_active
-                                  : Icons.notification_add),
-                              label: Text(
-                                isNotifying
-                                    ? 'Recebendo notificações ✓'
-                                    : 'Confirmar CRM e Receber Notificações',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ],
                 ),
               ),
-            );
-          },
+              if (isNotifying) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.notifications_active,
+                          size: 16, color: Colors.green.shade800),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Recebendo notificações ✓',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+
+        return Dialog(
+          backgroundColor:
+              isIOSPlatform ? Colors.transparent : Colors.white,
+          elevation: isIOSPlatform ? 0 : 8,
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: isIOSPlatform
+                ? LiquidGlassSurface(
+                    borderRadius: BorderRadius.circular(26),
+                    tintColor: Colors.white.withValues(alpha: 0.88),
+                    blurSigma: 26,
+                    child: content,
+                  )
+                : content,
+          ),
         );
       },
     );
