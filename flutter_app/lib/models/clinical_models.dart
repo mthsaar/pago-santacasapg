@@ -318,9 +318,9 @@ class ParsedParity {
     }
 
     for (final letter in letters) {
-      final rx = RegExp('(?:\\b|$letter)\\s*(\\d{1,2})', caseSensitive: false);
-      final compactRx = RegExp('$letter\\s*(\\d{1,2})', caseSensitive: false);
-      final m = compactRx.firstMatch(str) ?? rx.firstMatch(str);
+      final parityRx =
+          RegExp('(?<![A-Za-z])$letter\\s*(\\d{1,2})', caseSensitive: false);
+      final m = parityRx.firstMatch(str);
       if (m != null) {
         final v = int.tryParse(m.group(1) ?? '0') ?? 0;
         map[letter] = v.clamp(0, 20);
@@ -328,7 +328,7 @@ class ParsedParity {
     }
 
     final leftover = str
-        .replaceAll(RegExp(r'[GPCAEMgpcaem]\s*\d{1,2}'), '')
+        .replaceAll(RegExp(r'(?<![A-Za-z])[GPCAEMgpcaem]\s*\d{1,2}'), '')
         .replaceAll(RegExp(r'^[\s,/;-]+|[\s,/;-]+$'), '')
         .trim();
 
@@ -523,15 +523,29 @@ class ParsedAdmissionReason {
 
     String extra = str;
     if (kDeliveryOptions.contains(matchedOpt)) {
+      extra = extra.replaceFirst(
+        RegExp(
+          r'^(?:CST\s*\+\s*LTB|CST\s*\+\s*DIU|PN\s*\+\s*DIU|CST|PN|PARTO\s+NORMAL|CES[ÁA]REA)\b',
+          caseSensitive: false,
+        ),
+        '',
+      );
+      if (dMatch != null) {
+        final dEsc = RegExp.escape(dMatch.group(0)!);
+        extra = extra.replaceFirst(
+          RegExp('(?:(?:em|no dia)\\s+)?$dEsc', caseSensitive: false),
+          '',
+        );
+      }
+      if (tMatch != null) {
+        final tEsc = RegExp.escape(tMatch.group(0)!);
+        extra = extra.replaceFirst(
+          RegExp('(?:(?:[àa]s|as|[àa])\\s+)?$tEsc\\.?', caseSensitive: false),
+          '',
+        );
+      }
       extra = extra
-          .replaceFirst(
-              RegExp(r'^(?:CST\s*\+\s*LTB|CST\s*\+\s*DIU|PN\s*\+\s*DIU|CST|PN|PARTO\s+NORMAL|CES[ÁA]REA)\b',
-                  caseSensitive: false),
-              '')
-          .replaceFirst(RegExp(r'\b(?:em|no dia)\s+\d{1,2}/\d{1,2}(?:/\d{2,4})?\b', caseSensitive: false), '')
-          .replaceFirst(RegExp(r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'), '')
-          .replaceFirst(RegExp(r'\b(?:[àa]s|as)?\s*\d{1,2}\s*(?::|h|H)\s*\d{2}\.?\b', caseSensitive: false), '')
-          .replaceFirst(RegExp(r'\b(?:[àa]s|as)\s*$', caseSensitive: false), '')
+          .replaceFirst(RegExp(r'(?:^|\s)(?:[àa]s|as)\s*$', caseSensitive: false), '')
           .replaceAll(RegExp(r'^[\s.,;-]+|[\s.,;-]+$'), '')
           .trim();
     }

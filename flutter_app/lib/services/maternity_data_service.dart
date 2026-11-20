@@ -83,9 +83,99 @@ class MaternityDataService extends ChangeNotifier {
   Future<void> syncAllWithCloud({bool forceSheetPriority = false}) async {
     await Future.wait([
       _pullDoctorsFromFirestoreRest(),
+      _pullShiftsFromFirestoreRest(),
       _pullMedicalRecordsFromFirestoreRest(),
       syncFromGoogleSheetAndFirestore(forceSheetPriority: forceSheetPriority),
     ]);
+  }
+
+  static const List<String> kMonthNamesPt = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+
+  int get currentYearInt {
+    final parts = currentMonth.split('-');
+    return int.tryParse(parts.first) ?? 2026;
+  }
+
+  int get currentMonthInt {
+    final parts = currentMonth.split('-');
+    return (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? 11;
+  }
+
+  String formatMonthYearPt(String yyyyMm) {
+    final parts = yyyyMm.split('-');
+    final y = int.tryParse(parts.first) ?? 2026;
+    final m = (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? 11;
+    final idx = (m - 1).clamp(0, 11);
+    return '${kMonthNamesPt[idx]} $y';
+  }
+
+  List<List<DateTime>> getWeeksOfMonth(int year, int month) {
+    final firstOfMonth = DateTime(year, month, 1);
+    final lastOfMonth = DateTime(year, month + 1, 0);
+
+    final firstDayIndex = firstOfMonth.weekday - 1; // 0 = Seg .. 6 = Dom
+    final startDate = firstOfMonth.subtract(Duration(days: firstDayIndex));
+
+    final lastDayIndex = lastOfMonth.weekday - 1;
+    final endDate = lastOfMonth.add(Duration(days: 6 - lastDayIndex));
+
+    final weeks = <List<DateTime>>[];
+    var cursor = startDate;
+
+    while (!cursor.isAfter(endDate)) {
+      final week = <DateTime>[];
+      for (int i = 0; i < 7; i++) {
+        week.add(cursor);
+        cursor = cursor.add(const Duration(days: 1));
+      }
+      weeks.add(week);
+    }
+    return weeks;
+  }
+
+  void setMonthYear(int year, int month) {
+    final mStr = month.toString().padLeft(2, '0');
+    currentMonth = '$year-$mStr';
+    currentWeekIndex = 0;
+    notifyListeners();
+  }
+
+  void jumpToToday() {
+    final now = DateTime.now();
+    final targetDate =
+        (now.year >= 2026) ? now : DateTime(2026, 11, 20);
+    final mStr = targetDate.month.toString().padLeft(2, '0');
+    final dStr = targetDate.day.toString().padLeft(2, '0');
+    currentMonth = '${targetDate.year}-$mStr';
+    selectedDate = '${targetDate.year}-$mStr-$dStr';
+
+    final weeks = getWeeksOfMonth(targetDate.year, targetDate.month);
+    int foundIdx = 0;
+    for (int i = 0; i < weeks.length; i++) {
+      for (final day in weeks[i]) {
+        if (day.year == targetDate.year &&
+            day.month == targetDate.month &&
+            day.day == targetDate.day) {
+          foundIdx = i;
+          break;
+        }
+      }
+    }
+    currentWeekIndex = foundIdx;
+    notifyListeners();
   }
 
   /// Solicita permissão nativa de notificações ao Android (API 33+) e iOS
@@ -198,6 +288,62 @@ class MaternityDataService extends ChangeNotifier {
     });
 
     doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  Future<void> _pullShiftsFromFirestoreRest() async {
+    try {
+      final url = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/shifts?pageSize=300',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode != 200) return;
+
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      final docs = decoded['documents'] as List<dynamic>? ?? [];
+      if (docs.isEmpty) return;
+
+      final fetched = <ShiftEntryModel>[];
+      for (final d in docs) {
+        final map = d as Map<String, dynamic>;
+        final docId = (map['name']?.toString() ?? '').split('/').last;
+        final fields = map['fields'] as Map<String, dynamic>? ?? {};
+
+        String strField(String k) {
+          final f = fields[k] as Map<String, dynamic>?;
+          if (f == null) return '';
+          return (f['stringValue'] ?? f['integerValue'] ?? '').toString();
+        }
+
+        final date = strField('date').trim();
+        final shiftType = strField('shift_type').trim();
+        final slotRole = strField('slot_role').trim();
+        final doctorId = strField('doctor_id').trim();
+        final doctorName = strField('doctor_name').trim();
+        if (date.isEmpty || shiftType.isEmpty) continue;
+
+        fetched.add(ShiftEntryModel(
+          id: docId,
+          date: date,
+          shiftType: shiftType,
+          slotRole: slotRole,
+          doctorId: doctorId,
+          doctorName: doctorName,
+        ));
+      }
+
+      if (fetched.isNotEmpty) {
+        final byId = <String, ShiftEntryModel>{
+          for (final s in shifts) s.id: s,
+        };
+        for (final s in fetched) {
+          byId[s.id] = s;
+        }
+        shifts
+          ..clear()
+          ..addAll(byId.values);
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   /// Sincroniza a coleção `doctors` do Firebase Firestore para que qualquer médico
@@ -910,12 +1056,12 @@ class MaternityDataService extends ChangeNotifier {
     return unique;
   }
 
-  void assignDoctorToShift({
+  Future<void> assignDoctorToShift({
     required String date,
     required String shiftType,
     required String slotRole,
     required String? doctorId,
-  }) {
+  }) async {
     _undoStack.add(List<ShiftEntryModel>.from(shifts));
     _redoStack.clear();
 
@@ -923,18 +1069,47 @@ class MaternityDataService extends ChangeNotifier {
       (s) => s.date == date && s.shiftType == shiftType && s.slotRole == slotRole,
     );
 
+    final docIdKey = '${date}_${shiftType}_$slotRole';
+
     if (doctorId != null && doctorId.isNotEmpty) {
       final doc = doctors.firstWhere((d) => d.id == doctorId);
-      shifts.add(ShiftEntryModel(
-        id: '${date}_${shiftType}_$slotRole',
+      final entry = ShiftEntryModel(
+        id: docIdKey,
         date: date,
         shiftType: shiftType,
         slotRole: slotRole,
         doctorId: doc.id,
         doctorName: doc.name,
-      ));
+      );
+      shifts.add(entry);
+      notifyListeners();
+      try {
+        final fsUrl = Uri.parse(
+          'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/shifts/$docIdKey',
+        );
+        await http.patch(
+          fsUrl,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'fields': {
+              'date': {'stringValue': date},
+              'shift_type': {'stringValue': shiftType},
+              'slot_role': {'stringValue': slotRole},
+              'doctor_id': {'stringValue': doc.id},
+              'doctor_name': {'stringValue': doc.name},
+            }
+          }),
+        );
+      } catch (_) {}
+    } else {
+      notifyListeners();
+      try {
+        final fsUrl = Uri.parse(
+          'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/shifts/$docIdKey',
+        );
+        await http.delete(fsUrl);
+      } catch (_) {}
     }
-    notifyListeners();
   }
 
   void undoShiftAction() {

@@ -4,10 +4,6 @@ import 'services/maternity_data_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Evita qualquer tarja amarela/preta de debug em telas compactas
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return const SizedBox.shrink();
-  };
   runApp(const SantaCasaMaternidadeApp());
 }
 
@@ -757,24 +753,142 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   /// ==========================================================================
-  /// ABA 1: ESCALA SEMANAL + BOTÃO DE TELA CHEIA FLUTUANTE FIXO NO CANTO DA TABELA
+  /// ABA 1: ESCALA SEMANAL + COLUNA "TURNO" FIXA + MONTH/YEAR PICKER
   /// ==========================================================================
   Widget _buildEscalaTab(BuildContext context, bool isMobile) {
-    final weekRanges = <List<int>>[
-      [1, 1],
-      [2, 8],
-      [9, 15],
-      [16, 22],
-      [23, 29],
-      [30, 30],
-    ];
-    final wkIdx = svc.currentWeekIndex.clamp(0, weekRanges.length - 1);
-    final range = weekRanges[wkIdx];
-    final daysInWeek = <int>[
-      for (int d = range[0]; d <= range[1]; d++) d,
-    ];
+    final weeks = svc.getWeeksOfMonth(svc.currentYearInt, svc.currentMonthInt);
+    final wkIdx = svc.currentWeekIndex.clamp(0, weeks.length - 1);
+    final weekDays = weeks[wkIdx];
+
+    final firstDay = weekDays.first;
+    final lastDay = weekDays.last;
+    final rangeLabel =
+        '${firstDay.day.toString().padLeft(2, '0')}/${firstDay.month.toString().padLeft(2, '0')} a '
+        '${lastDay.day.toString().padLeft(2, '0')}/${lastDay.month.toString().padLeft(2, '0')}';
 
     final onCallNow = svc.getDoctorsOnCallNow();
+
+    const slotSpecs = <Map<String, String>>[
+      {'label': 'ROTINEIRO', 'hours': '07-13h', 'type': 'routine', 'role': 'rotin'},
+      {'label': 'MANHÃ 1', 'hours': '07-13h', 'type': 'morning', 'role': 'm1'},
+      {'label': 'MANHÃ 2', 'hours': '07-13h', 'type': 'morning', 'role': 'm2'},
+      {'label': 'TARDE 1', 'hours': '13-19h', 'type': 'afternoon', 'role': 'a1'},
+      {'label': 'TARDE 2', 'hours': '13-19h', 'type': 'afternoon', 'role': 'a2'},
+      {'label': 'REFORÇO', 'hours': '19-23h', 'type': 'evening', 'role': 'extra'},
+      {'label': 'NOITE 1', 'hours': '19-07h', 'type': 'night', 'role': 'n1'},
+      {'label': 'NOITE 2', 'hours': '19-07h', 'type': 'night', 'role': 'n2'},
+    ];
+
+    const weekdayAbbr = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+    final fixedTurnoTable = Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          right: BorderSide(color: Color(0xFFD5D7E5), width: 1.5),
+        ),
+      ),
+      child: DataTable(
+        headingRowColor: WidgetStateProperty.all(kContainer),
+        headingRowHeight: 42,
+        dataRowMinHeight: 46,
+        dataRowMaxHeight: 46,
+        horizontalMargin: 10,
+        columnSpacing: 0,
+        columns: const [
+          DataColumn(
+            label: Text(
+              'TURNO',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                color: kBrand950,
+              ),
+            ),
+          ),
+        ],
+        rows: slotSpecs.map((spec) {
+          return DataRow(
+            cells: [
+              DataCell(
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      spec['label']!,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                        color: kBrand950,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      spec['hours']!,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 9.5,
+                        color: Colors.black,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+
+    final scrollableDaysTable = DataTable(
+      headingRowColor: WidgetStateProperty.all(kContainer),
+      headingRowHeight: 42,
+      dataRowMinHeight: 46,
+      dataRowMaxHeight: 46,
+      horizontalMargin: 10,
+      columnSpacing: 12,
+      columns: weekDays.map((day) {
+        final isToday = day.year == 2026 && day.month == 11 && day.day == 20;
+        final wName = weekdayAbbr[(day.weekday - 1).clamp(0, 6)];
+        final dText =
+            '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}';
+        return DataColumn(
+          label: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                wName,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 9.5,
+                  color: isToday ? kScRed600 : Colors.black54,
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                dText,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                  color: isToday ? kScRed700 : kBrand950,
+                  height: 1.1,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      rows: slotSpecs.map((spec) {
+        return _buildScheduleDaysRow(
+          spec['type']!,
+          spec['role']!,
+          weekDays,
+        );
+      }).toList(),
+    );
 
     final scheduleTableStack = Stack(
       children: [
@@ -788,62 +902,23 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           clipBehavior: Clip.antiAlias,
           child: SingleChildScrollView(
             scrollDirection: Axis.vertical,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: WidgetStateProperty.all(kContainer),
-                headingRowHeight: 38,
-                dataRowMinHeight: 38,
-                dataRowMaxHeight: 46,
-                columnSpacing: 14,
-                columns: [
-                  const DataColumn(
-                    label: Text('TURNO',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, fontSize: 11)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fixedTurnoTable,
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: scrollableDaysTable,
                   ),
-                  const DataColumn(
-                    label: Text('HORÁRIO',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900, fontSize: 11)),
-                  ),
-                  for (final day in daysInWeek)
-                    DataColumn(
-                      label: Text(
-                        '${day.toString().padLeft(2, '0')}/11',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11,
-                          color: kBrand950,
-                        ),
-                      ),
-                    ),
-                ],
-                rows: [
-                  _buildScheduleDataRow(
-                      'ROTINEIRO', '07-13h', 'routine', 'rotin', daysInWeek),
-                  _buildScheduleDataRow(
-                      'MANHÃ 1', '07-13h', 'morning', 'm1', daysInWeek),
-                  _buildScheduleDataRow(
-                      'MANHÃ 2', '07-13h', 'morning', 'm2', daysInWeek),
-                  _buildScheduleDataRow(
-                      'TARDE 1', '13-19h', 'afternoon', 'a1', daysInWeek),
-                  _buildScheduleDataRow(
-                      'TARDE 2', '13-19h', 'afternoon', 'a2', daysInWeek),
-                  _buildScheduleDataRow(
-                      'REFORÇO', '19-23h', 'evening', 'extra', daysInWeek),
-                  _buildScheduleDataRow(
-                      'NOITE 1', '19-07h', 'night', 'n1', daysInWeek),
-                  _buildScheduleDataRow(
-                      'NOITE 2', '19-07h', 'night', 'n2', daysInWeek),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
         // Botão de Tela Cheia Flutuante Fixo no Canto Superior Direito da Planilha (não se move com as células!)
         Positioned(
-          top: 6,
+          top: 5,
           right: 6,
           child: Material(
             color: kBrand950.withValues(alpha: 0.88),
@@ -892,9 +967,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     return ListView(
       children: [
-        // Caixa compacta onde está o mês e navegação de semanas
+        // Caixa compacta com Month & Year Picker + Hoje + Navegação de semanas
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
@@ -902,25 +977,43 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           ),
           child: Row(
             children: [
-              const Text(
-                'Novembro 2026',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: kBrand950,
-                ),
-              ),
-              const SizedBox(width: 8),
+              // Month & Year Picker Clicável
               InkWell(
-                onTap: () {
-                  setState(() {
-                    svc.currentWeekIndex = 3;
-                    svc.selectedDate = '2026-11-20';
-                  });
-                },
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _openMonthYearPickerDialog(context),
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kContainerLow,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFD5D7E5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        svc.formatMonthYearPt(svc.currentMonth),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: kBrand950,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.arrow_drop_down,
+                          size: 18, color: kBrand700),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => svc.jumpToToday(),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: kBrand50,
                     borderRadius: BorderRadius.circular(999),
@@ -939,28 +1032,28 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                 onPressed: wkIdx > 0
                     ? () => setState(() => svc.currentWeekIndex = wkIdx - 1)
                     : null,
-                icon: const Icon(Icons.chevron_left, size: 20),
+                icon: const Icon(Icons.chevron_left, size: 19),
               ),
               Text(
-                '${range[0].toString().padLeft(2, '0')}/11 a ${range[1].toString().padLeft(2, '0')}/11',
+                rangeLabel,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 12,
+                  fontSize: 11,
                   color: kBrand950,
                 ),
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                onPressed: wkIdx < weekRanges.length - 1
+                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                onPressed: wkIdx < weeks.length - 1
                     ? () => setState(() => svc.currentWeekIndex = wkIdx + 1)
                     : null,
-                icon: const Icon(Icons.chevron_right, size: 20),
+                icon: const Icon(Icons.chevron_right, size: 19),
               ),
             ],
           ),
@@ -1015,11 +1108,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         const SizedBox(height: 10),
 
         // Médicos de Plantão Agora (Apenas Nome e Contato)
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
+        Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            side: const BorderSide(color: Color(0xFFD5D7E5)),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
@@ -1109,72 +1202,187 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
-  DataRow _buildScheduleDataRow(
-    String label,
-    String hours,
+  DataRow _buildScheduleDaysRow(
     String shiftType,
     String slotRole,
-    List<int> daysInWeek,
+    List<DateTime> weekDays,
   ) {
     return DataRow(
-      cells: [
-        DataCell(Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 11,
-            color: kBrand950,
-          ),
-        )),
-        DataCell(Text(
-          hours,
-          style: const TextStyle(fontSize: 10, color: Colors.black54),
-        )),
-        ...daysInWeek.map((day) {
-          final dateStr = '2026-11-${day.toString().padLeft(2, '0')}';
-          final match = svc.shifts.where(
-            (s) =>
-                s.date == dateStr &&
-                s.shiftType == shiftType &&
-                s.slotRole == slotRole,
-          );
-          final entry = match.isNotEmpty ? match.first : null;
-          return DataCell(
-            InkWell(
-              onTap: () {
-                if (svc.isEditorMode) {
-                  _openAssignShiftDialog(
-                      context, dateStr, shiftType, slotRole, entry);
-                } else if (entry != null) {
-                  final doc = svc.doctors.firstWhere(
-                    (d) => d.id == entry.doctorId,
-                    orElse: () => DoctorModel(
-                        id: entry.doctorId, name: entry.doctorName),
-                  );
-                  _openDoctorProfileModal(context, doc);
-                }
-              },
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: entry != null ? kBrand50 : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  entry?.doctorName ?? '—',
-                  style: TextStyle(
-                    fontWeight:
-                        entry != null ? FontWeight.w800 : FontWeight.w500,
-                    fontSize: 11,
-                    color: entry != null ? kBrand950 : Colors.black38,
-                  ),
+      cells: weekDays.map((day) {
+        final dateStr =
+            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        final match = svc.shifts.where(
+          (s) =>
+              s.date == dateStr &&
+              s.shiftType == shiftType &&
+              s.slotRole == slotRole,
+        );
+        final entry = match.isNotEmpty ? match.first : null;
+        return DataCell(
+          InkWell(
+            onTap: () {
+              if (svc.isEditorMode) {
+                _openAssignShiftDialog(
+                    context, dateStr, shiftType, slotRole, entry);
+              } else if (entry != null) {
+                final doc = svc.doctors.firstWhere(
+                  (d) => d.id == entry.doctorId,
+                  orElse: () => DoctorModel(
+                      id: entry.doctorId, name: entry.doctorName),
+                );
+                _openDoctorProfileModal(context, doc);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: entry != null ? kBrand50 : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                entry?.doctorName ?? '—',
+                style: TextStyle(
+                  fontWeight:
+                      entry != null ? FontWeight.w800 : FontWeight.w500,
+                  fontSize: 11,
+                  color: entry != null ? kBrand950 : Colors.black38,
                 ),
               ),
             ),
-          );
-        }),
-      ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Picker de Mês e Ano em Português para consulta de qualquer mês/ano
+  void _openMonthYearPickerDialog(BuildContext context) {
+    int selectedYear = svc.currentYearInt;
+    int selectedMonth = svc.currentMonthInt;
+    const monthAbbr = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (dCtx) {
+        return StatefulBuilder(
+          builder: (dCtx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22)),
+              title: const Text(
+                'Selecionar Mês e Ano',
+                style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: kBrand950),
+              ),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Seletor de Ano (< 2026 >)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: kContainerLow,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFD5D7E5)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            onPressed: () =>
+                                setDialogState(() => selectedYear--),
+                            icon: const Icon(Icons.chevron_left,
+                                color: kBrand700),
+                          ),
+                          Text(
+                            '$selectedYear',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                              color: kBrand950,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () =>
+                                setDialogState(() => selectedYear++),
+                            icon: const Icon(Icons.chevron_right,
+                                color: kBrand700),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Grade dos 12 Meses
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 12,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        childAspectRatio: 2.1,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemBuilder: (_, idx) {
+                        final mNum = idx + 1;
+                        final isSel = mNum == selectedMonth;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () =>
+                              setDialogState(() => selectedMonth = mNum),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: isSel ? kBrand700 : kContainerLow,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSel
+                                    ? kBrand700
+                                    : const Color(0xFFD5D7E5),
+                              ),
+                            ),
+                            child: Text(
+                              monthAbbr[idx],
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13,
+                                color: isSel ? Colors.white : kBrand950,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dCtx),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: kBrand700),
+                  onPressed: () {
+                    svc.setMonthYear(selectedYear, selectedMonth);
+                    Navigator.pop(dCtx);
+                  },
+                  child: const Text('Aplicar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1876,41 +2084,47 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
     return ListView(
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.calendar_today, size: 16, color: kBrand700),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Fechamento Mensal • Novembro de 2026',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                    color: kBrand950,
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openMonthYearPickerDialog(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFD5D7E5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16, color: kBrand700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Fechamento Mensal • ${svc.formatMonthYearPt(svc.currentMonth)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: kBrand950,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                const Icon(Icons.arrow_drop_down, color: kBrand700),
+              ],
+            ),
           ),
         ),
 
         const SizedBox(height: 10),
 
         // 1. Fechamento dos Profissionais (Colapsável)
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
+        Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            side: const BorderSide(color: Color(0xFFD5D7E5)),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               ListTile(
@@ -1967,7 +2181,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                     ],
                     rows: svc.doctors.map((doc) {
                       final docShifts = svc.shifts
-                          .where((s) => s.doctorId == doc.id)
+                          .where((s) =>
+                              s.doctorId == doc.id &&
+                              s.date.startsWith(svc.currentMonth))
                           .toList();
                       final d6 = docShifts
                           .where((s) =>
@@ -2010,12 +2226,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         const SizedBox(height: 10),
 
         // 2. Indicadores Mensais de Pacientes (Colapsável)
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
+        Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            side: const BorderSide(color: Color(0xFFD5D7E5)),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               ListTile(
@@ -2067,12 +2284,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         const SizedBox(height: 10),
 
         // 3. PRONTUÁRIOS (Cadastrados por Nome, com Data de Inserção e de Alta, Protegido por Senha)
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
+        Material(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            side: const BorderSide(color: Color(0xFFD5D7E5)),
           ),
+          clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
