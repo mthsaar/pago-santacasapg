@@ -53,6 +53,10 @@
 	<string>Para selecionar a foto do perfil do profissional no Corpo Clínico.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Para capturar a foto do perfil do profissional no Corpo Clínico.</string>
+	<key>GIDClientID</key>
+	<string>702434023267-49dajk6cgcvnhkmdf6gmjibsf9cr5eke.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>702434023267-5hn9uq2kage6b1m0vcaui61f67qasn8c.apps.googleusercontent.com</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

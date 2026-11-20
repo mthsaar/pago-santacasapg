@@ -10,6 +10,8 @@ import '../models/clinical_models.dart';
 const String kFirebaseProjectId = 'pago---santa-casa-pg';
 const String kGoogleWebClientId =
     '702434023267-5hn9uq2kage6b1m0vcaui61f67qasn8c.apps.googleusercontent.com';
+const String kGoogleIosClientId =
+    '702434023267-49dajk6cgcvnhkmdf6gmjibsf9cr5eke.apps.googleusercontent.com';
 
 class MaternityDataService extends ChangeNotifier {
   static const MethodChannel _notifChannel =
@@ -1034,6 +1036,9 @@ class MaternityDataService extends ChangeNotifier {
 
     try {
       await GoogleSignIn.instance.initialize(
+        clientId: defaultTargetPlatform == TargetPlatform.iOS
+            ? kGoogleIosClientId
+            : null,
         serverClientId: kGoogleWebClientId,
       );
 
