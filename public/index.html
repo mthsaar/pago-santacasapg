@@ -19,7 +19,7 @@
   <link rel="shortcut icon" type="image/png" href="/icon-192.png?v=14">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=14">
   <link rel="manifest" href="/manifest.json?v=14">
-  <link rel="stylesheet" href="/styles.css?v=21">
+  <link rel="stylesheet" href="/styles.css?v=22">
 
   <!-- Regra Crítica Inline: Garante remoção total da barra superior no mobile antes mesmo do carregamento externo -->
   <style>
@@ -95,6 +95,7 @@
 
   <!-- Firebase SDK v10 (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="/firebase-config.js?v=4"></script>
 </head>
@@ -442,9 +443,9 @@
             <span>Sincronizar</span>
           </button>
 
-          <a href="https://docs.google.com/spreadsheets/d/1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0/edit?gid=0#gid=0"
+          <a id="maternity-open-sheet-link" href="https://docs.google.com/spreadsheets/d/1Vrv-BaXEsZtSsB6G3Ix-eK3Xk4rcos-HYp9zQJVVcM0/edit?usp=sharing"
              target="_blank" rel="noopener"
-             title="Abrir planilha original"
+             title="Abrir planilha ativa"
              class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 transition">
             <i data-lucide="external-link" class="w-3.5 h-3.5 text-scred-600"></i>
             <span>Planilha</span>
@@ -1498,8 +1499,27 @@
 
       <div class="space-y-3.5 text-xs text-slate-600">
         <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 text-emerald-950">
-          <p class="font-extrabold">✓ Leitura em tempo real ativa</p>
-          <p class="mt-0.5 text-[11px]">O aplicativo já lê automaticamente a planilha do Google Docs a cada 10 segundos e sincroniza instantaneamente com o Firebase.</p>
+          <p class="font-extrabold">✓ Sincronização em tempo real JSONP + Banco Firebase ativa</p>
+          <p class="mt-0.5 text-[11px]">O aplicativo lê a planilha do Google Docs sem bloqueio de CORS (JSONP) a cada 10 segundos e sincroniza com o banco de dados Firebase Firestore.</p>
+        </div>
+
+        <!-- Seleção de Planilha Ativa (Provisória Homologação vs Oficial) -->
+        <div class="bg-brand-50/70 border border-brand-200 rounded-2xl p-3.5 space-y-2">
+          <label class="block font-extrabold text-brand-950">Planilha Google Sheets Conectada (ID ou URL):</label>
+          <input type="text" id="maternity-sheet-id-input" placeholder="ID ou link da planilha Google Sheets"
+                 class="w-full bg-white border border-brand-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button type="button" onclick="app.setMaternitySheetPreset('1Vrv-BaXEsZtSsB6G3Ix-eK3Xk4rcos-HYp9zQJVVcM0')"
+                    class="py-2 px-3 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-extrabold text-[11px] flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="flask-conical" class="w-3.5 h-3.5"></i>
+              <span>Usar Planilha Provisória (Cópia)</span>
+            </button>
+            <button type="button" onclick="app.setMaternitySheetPreset('1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0')"
+                    class="py-2 px-3 rounded-xl bg-white hover:bg-brand-100 text-brand-950 border border-brand-200 font-extrabold text-[11px] flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
+              <span>Usar Planilha Oficial Hospital</span>
+            </button>
+          </div>
         </div>
 
         <div class="bg-m3-containerLow border border-m3-outlineVariant/60 rounded-2xl p-3.5 space-y-2">
@@ -1513,7 +1533,8 @@
           <div class="relative">
             <pre id="apps-script-snippet" class="bg-slate-900 text-slate-100 p-3 rounded-xl text-[10px] font-mono overflow-x-auto leading-relaxed">function doPost(e) {
   var data = JSON.parse(e.postData.contents);
-  var ss = SpreadsheetApp.openById('1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0');
+  var sheetId = data.sheet_id || '1Vrv-BaXEsZtSsB6G3Ix-eK3Xk4rcos-HYp9zQJVVcM0';
+  var ss = SpreadsheetApp.openById(sheetId);
   var sheet = ss.getSheets()[0];
   var values = sheet.getDataRange().getValues();
   var target = String(data.leito || '').trim().toUpperCase();
@@ -1675,12 +1696,44 @@
             </label>
           </div>
 
+          <!-- Login com Google + Vínculo Verificado por Duplo Cheque -->
+          <div id="google-auth-doctor-box" class="rounded-xl bg-brand-50/70 border border-brand-200 p-3 space-y-2">
+            <div id="google-auth-logged-out" class="flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <div class="font-extrabold text-brand-950 text-xs">Login com Google (Duplo Cheque)</div>
+                <div class="text-[11px] text-slate-600 leading-tight">Entre com sua conta Google para vincular seu perfil com segurança</div>
+              </div>
+              <button type="button" onclick="app.signInWithGoogleForNotifications()"
+                      class="h-10 px-3.5 rounded-xl bg-white hover:bg-brand-100 text-brand-950 border border-brand-300 font-extrabold text-xs flex items-center gap-1.5 shadow-2xs shrink-0 whitespace-nowrap transition">
+                <i data-lucide="shield-check" class="w-4 h-4 text-scred-600"></i>
+                <span>Entrar com Google</span>
+              </button>
+            </div>
+
+            <div id="google-auth-logged-in" class="hidden flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="w-8 h-8 rounded-full bg-emerald-600 text-white font-extrabold text-xs flex items-center justify-center shrink-0" id="google-auth-avatar">
+                  G
+                </div>
+                <div class="min-w-0">
+                  <div class="font-extrabold text-brand-950 text-xs truncate" id="google-auth-user-name">Conta Google</div>
+                  <div class="text-[11px] text-emerald-800 font-bold truncate" id="google-auth-user-email">email@gmail.com</div>
+                </div>
+              </div>
+              <button type="button" onclick="app.signOutGoogleForNotifications()"
+                      class="px-2.5 py-1.5 rounded-lg bg-white hover:bg-scred-50 text-slate-600 hover:text-scred-700 border border-slate-200 font-bold text-[11px] shrink-0 transition">
+                Trocar conta
+              </button>
+            </div>
+          </div>
+
           <div>
-            <label class="block font-extrabold text-brand-950 mb-1">Selecione seu nome na escala:</label>
-            <select id="reminder-my-doctor-select" onchange="app.saveShiftReminderConfig(true)"
+            <label class="block font-extrabold text-brand-950 mb-1">Selecione seu perfil profissional (exige Duplo Cheque):</label>
+            <select id="reminder-my-doctor-select" onchange="app.handleReminderDoctorSelectChange(this.value)"
                     class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-extrabold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
-              <option value="ALL">Todos os plantonistas (Receber todos os alertas)</option>
+              <option value="ALL">Todos os plantonistas (Sem filtro individual)</option>
             </select>
+            <p id="reminder-double-check-status" class="text-[11px] text-emerald-800 font-bold mt-1 hidden"></p>
           </div>
 
           <!-- Opções do que notificar -->
@@ -1854,14 +1907,109 @@
     </div>
   </div>
 
+  <!-- ================= MODAL: DUPLO CHEQUE DE SEGURANÇA (VÍNCULO CONTA GOOGLE <-> MÉDICO) ================= -->
+  <div id="modal-doctor-double-check" class="fixed inset-0 bg-brand-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-m3-xl max-w-md w-full overflow-hidden shadow-2xl border border-m3-outlineVariant/40 modal-enter-active">
+      <div class="px-5 py-4 bg-gradient-to-r from-brand-800 to-brand-950 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-scred-600 text-white flex items-center justify-center shadow-sm shrink-0">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-sm sm:text-base leading-tight">Duplo Cheque de Identidade</h3>
+            <p class="text-[11px] text-brand-100">Proteção contra vínculo acidental de notificações</p>
+          </div>
+        </div>
+        <button type="button" onclick="app.cancelDoctorDoubleCheck()" class="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/15 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-3.5 text-xs">
+        <!-- Resumo Conta Google vs Perfil Selecionado -->
+        <div class="rounded-2xl bg-m3-containerLow border border-m3-outlineVariant/70 p-3.5 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-slate-500 font-bold">Conta Google:</span>
+            <span id="double-check-google-account" class="font-extrabold text-brand-950 truncate">Não autenticado</span>
+          </div>
+          <div class="flex items-center justify-between gap-2 pt-2 border-t border-m3-outlineVariant/40">
+            <span class="text-slate-500 font-bold">Perfil na Escala:</span>
+            <span id="double-check-target-doctor" class="font-extrabold text-scred-700 text-sm">Dr(a). Nome</span>
+          </div>
+        </div>
+
+        <!-- Alerta de Divergência de Nome (ex: Henrique selecionando Jéssica) -->
+        <div id="double-check-mismatch-warning" class="hidden rounded-2xl bg-scred-50 border-2 border-scred-300 p-3.5 text-scred-900 space-y-1">
+          <div class="flex items-center gap-1.5 font-extrabold text-scred-700 text-xs">
+            <i data-lucide="alert-octagon" class="w-4 h-4 shrink-0"></i>
+            <span>Atenção: Nome diferente da Conta Google!</span>
+          </div>
+          <p id="double-check-mismatch-text" class="text-[11px] font-semibold leading-snug"></p>
+        </div>
+
+        <!-- Se ainda não estiver logado com Google, permite logar ou informar o e-mail Google -->
+        <div id="double-check-google-input-box" class="space-y-2">
+          <button type="button" onclick="app.signInWithGoogleForNotifications(true)"
+                  class="w-full h-11 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition">
+            <i data-lucide="log-in" class="w-4 h-4"></i>
+            <span>Autenticar com Google Agora</span>
+          </button>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Seu Nome (Conta Google):</label>
+              <input type="text" id="double-check-manual-name" oninput="app.evaluateDoubleCheckNameMatch()" placeholder="Ex: Henrique H"
+                     class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-bold text-brand-950">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-slate-600 mb-1">Seu E-mail Google:</label>
+              <input type="email" id="double-check-manual-email" placeholder="seuemail@gmail.com"
+                     class="w-full bg-m3-containerLow border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-bold text-brand-950">
+            </div>
+          </div>
+        </div>
+
+        <!-- Passo de Verificação (4 últimos dígitos do celular/CRM do profissional OU Senha da Coordenação) -->
+        <div class="rounded-2xl bg-brand-50/70 border border-brand-200 p-3.5 space-y-2">
+          <label id="double-check-secret-label" class="block font-extrabold text-brand-950 text-xs">
+            Duplo Cheque: Digite os 4 últimos dígitos do telefone cadastrado deste profissional (ou a senha do Editor):
+          </label>
+          <input type="text" id="double-check-secret-input" inputmode="numeric" maxlength="6"
+                 placeholder="4 últimos dígitos do telefone ou PIN"
+                 class="w-full bg-white border border-brand-300 rounded-xl px-3.5 py-2.5 text-sm font-extrabold text-center tracking-widest text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          <p id="double-check-secret-hint" class="text-[11px] text-slate-600 font-semibold leading-tight"></p>
+        </div>
+
+        <!-- Checkbox de Confirmação Pessoal -->
+        <label class="flex items-start gap-2.5 p-3 rounded-xl bg-m3-containerLow border border-m3-outlineVariant/70 cursor-pointer">
+          <input type="checkbox" id="double-check-confirm-checkbox" class="w-4 h-4 mt-0.5 accent-scred-600 rounded shrink-0">
+          <span class="text-[11px] font-extrabold text-brand-950 leading-snug">
+            Confirmo que sou <span id="double-check-confirm-doc-inline" class="text-scred-700 underline">este profissional</span> e que este aparelho é de meu uso pessoal para receber alertas de plantão.
+          </span>
+        </label>
+      </div>
+
+      <div class="px-5 py-3.5 border-t border-m3-outlineVariant/40 bg-m3-containerLow flex items-center justify-end gap-2">
+        <button type="button" onclick="app.cancelDoctorDoubleCheck()"
+                class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-m3-container rounded-full transition">
+          Cancelar
+        </button>
+        <button type="button" onclick="app.confirmDoctorDoubleCheck()"
+                class="px-5 py-2.5 text-xs font-extrabold text-white bg-scred-600 hover:bg-scred-700 rounded-full shadow-md flex items-center gap-1.5 transition">
+          <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+          <span>Confirmar Duplo Cheque</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=21"></script>
-  <script src="/app.js?v=21"></script>
+  <script src="/initial-data.js?v=22"></script>
+  <script src="/app.js?v=22"></script>
   <script>
-    const CURRENT_APP_VERSION = "v21-202611132145";
+    const CURRENT_APP_VERSION = "v22-202611201135";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -1884,7 +2032,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=21", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=22", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }

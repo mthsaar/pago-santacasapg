@@ -10,7 +10,8 @@ const SILHOUETTE_SVG = `
   </svg>
 `;
 
-const MATERNITY_SHEET_ID = '1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0';
+const MATERNITY_SHEET_ID = '1Vrv-BaXEsZtSsB6G3Ix-eK3Xk4rcos-HYp9zQJVVcM0';
+const MATERNITY_OFFICIAL_SHEET_ID = '1i82ITSC-qZ564ABUo4bz0ejQKpnwO1kjUnlshivXTk0';
 
 const MATERNITY_DEFAULT_GROUPS = [
   {
@@ -91,6 +92,7 @@ const app = {
       patients: false
     },
     maternityWebhookUrl: localStorage.getItem('maternity_sheet_webhook') || '',
+    maternitySheetId: localStorage.getItem('maternity_active_sheet_id_v22') || MATERNITY_SHEET_ID,
     shiftReminderConfig: {
       enabled: localStorage.getItem('shift_reminder_enabled') !== 'false',
       my_doctor_id: localStorage.getItem('shift_reminder_my_doctor_id') || 'ALL',
@@ -98,6 +100,8 @@ const app = {
       notify_clinical: localStorage.getItem('shift_reminder_notify_clinical') !== 'false',
       channel: 'inapp'
     },
+    googleUser: JSON.parse(localStorage.getItem('scpg_google_auth_user') || 'null'),
+    pendingDoubleCheckDoctorId: null,
     sentShiftReminders: JSON.parse(localStorage.getItem('sent_shift_reminders') || '{}'),
     evoParity: { G: 0, P: 0, C: 0, A: 0, E: 0, M: 0, activeLetter: null, extraText: '' },
     evoAltoRiscoSelected: [],
@@ -128,6 +132,8 @@ const app = {
     this.updateReminderActiveDot();
 
     await this.initFirebase();
+    this.initGoogleAuthListener();
+    this.updateOpenSheetButtonLink();
     await this.loadAllData();
     this.syncMaternityFromGoogleSheet();
     this.checkAndTriggerOneHourShiftReminders();
@@ -347,22 +353,11 @@ const app = {
           this.state.maternityWebhookUrl = data.webhook_url;
           localStorage.setItem('maternity_sheet_webhook', data.webhook_url);
         }
-      }
-    });
-
-    this.state.firestoreDb.collection('settings').doc('shift_reminders').onSnapshot(doc => {
-      if (doc && doc.exists) {
-        const data = doc.data();
-        if (data) {
-          this.state.shiftReminderConfig = {
-            enabled: data.enabled !== false,
-            channel: data.channel || 'whatsapp',
-            webhook_url: data.webhook_url || ''
-          };
-          localStorage.setItem('shift_reminder_enabled', String(this.state.shiftReminderConfig.enabled));
-          localStorage.setItem('shift_reminder_channel', this.state.shiftReminderConfig.channel);
-          localStorage.setItem('shift_reminder_webhook', this.state.shiftReminderConfig.webhook_url);
-          this.updateReminderActiveDot();
+        if (data && data.sheet_id && data.sheet_id !== this.state.maternitySheetId) {
+          this.state.maternitySheetId = data.sheet_id;
+          localStorage.setItem('maternity_active_sheet_id_v22', data.sheet_id);
+          this.updateOpenSheetButtonLink();
+          this.syncMaternityFromGoogleSheet();
         }
       }
     });
@@ -1902,13 +1897,97 @@ const app = {
     return rows;
   },
 
-  async syncMaternityFromGoogleSheet(showFeedback = false) {
-    const url = `https://docs.google.com/spreadsheets/d/${MATERNITY_SHEET_ID}/gviz/tq?tqx=out:csv&headers=0&gid=0&_t=${Date.now()}`;
+  getActiveMaternitySheetId() {
+    const raw = (this.state.maternitySheetId || MATERNITY_SHEET_ID).trim();
+    const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    return match ? match[1] : raw;
+  },
+
+  updateOpenSheetButtonLink() {
+    const linkEl = document.getElementById('maternity-open-sheet-link');
+    if (linkEl) {
+      linkEl.href = `https://docs.google.com/spreadsheets/d/${this.getActiveMaternitySheetId()}/edit?usp=sharing`;
+    }
+  },
+
+  loadMaternityRowsViaJsonp(sheetId) {
+    return new Promise((resolve, reject) => {
+      const cbName = `__scpgSheetJsonp_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const script = document.createElement('script');
+      let settled = false;
+
+      const cleanup = () => {
+        try {
+          delete window[cbName];
+        } catch (e) {
+          window[cbName] = undefined;
+        }
+        if (script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('Timeout JSONP Google Sheets'));
+      }, 9000);
+
+      window[cbName] = (resp) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+
+        if (!resp || !resp.table || !Array.isArray(resp.table.rows)) {
+          reject(new Error('Resposta JSONP inválida'));
+          return;
+        }
+
+        const rows = resp.table.rows.map(r => {
+          const cells = (r && Array.isArray(r.c)) ? r.c : [];
+          return cells.map(c => {
+            if (!c) return '';
+            if (c.f !== undefined && c.f !== null) return String(c.f);
+            if (c.v !== undefined && c.v !== null) return String(c.v);
+            return '';
+          });
+        });
+
+        resolve(rows);
+      };
+
+      script.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+        reject(new Error('Falha ao carregar script JSONP da planilha'));
+      };
+
+      script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=responseHandler:${cbName}&headers=0&gid=0&_t=${Date.now()}`;
+      document.head.appendChild(script);
+    });
+  },
+
+  async fetchMaternityRowsFromGoogleSheet(sheetId) {
     try {
+      return await this.loadMaternityRowsViaJsonp(sheetId);
+    } catch (jsonpErr) {
+      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=0&gid=0&_t=${Date.now()}`;
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Falha ao consultar planilha');
       const csvText = await res.text();
-      const rows = this.parseCSV(csvText);
+      return this.parseCSV(csvText);
+    }
+  },
+
+  async syncMaternityFromGoogleSheet(showFeedback = false) {
+    const sheetId = this.getActiveMaternitySheetId();
+    this.updateOpenSheetButtonLink();
+    try {
+      const rows = await this.fetchMaternityRowsFromGoogleSheet(sheetId);
 
       const knownSet = new Set();
       MATERNITY_DEFAULT_GROUPS.forEach(g => g.beds.forEach(b => knownSet.add(this.normalizeLeitoKey(b))));
@@ -1931,15 +2010,27 @@ const app = {
         const cols = rows[i];
         if (!cols || cols.length === 0) continue;
 
-        const rawLeito = String(cols[0] || '').trim();
+        let rawLeito = String(cols[0] || '').trim();
         if (!rawLeito) continue;
 
-        const upperLeito = rawLeito.toUpperCase();
+        let upperLeito = rawLeito.toUpperCase();
         if (
           upperLeito.startsWith('PASSAGEM DE PLANT') ||
           upperLeito === 'LEITO'
         ) {
           continue;
+        }
+
+        // Se o médico digitou dois leitos iguais em linhas seguidas (ex: "321-1" na linha do "321-2"),
+        // redireciona automaticamente a segunda linha para o leito par ("-2") para nunca sobrescrever a paciente
+        if (newSheetMap[upperLeito] && (newSheetMap[upperLeito].nome || newSheetMap[upperLeito].internacao_por)) {
+          if (upperLeito.endsWith('-1')) {
+            const twinBed = upperLeito.replace(/-1$/, '-2');
+            if (!newSheetMap[twinBed] || (!newSheetMap[twinBed].nome && !newSheetMap[twinBed].internacao_por)) {
+              rawLeito = twinBed;
+              upperLeito = twinBed;
+            }
+          }
         }
 
         const entry = {
@@ -2448,16 +2539,340 @@ const app = {
 
     if (myDocSelect) {
       const sortedDocs = [...(this.state.doctors || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      myDocSelect.innerHTML = `<option value="ALL">Todos os plantonistas (Receber todos os alertas)</option>` +
-        sortedDocs.map(d => `<option value="${d.id}">${this.escapeHtml(d.name)}</option>`).join('');
+      const curEmail = (this.state.googleUser && this.state.googleUser.email || '').toLowerCase();
+      myDocSelect.innerHTML = `<option value="ALL">Todos os plantonistas (Sem filtro individual)</option>` +
+        sortedDocs.map(d => {
+          const linkedEmail = String(d.linked_google_email || '').toLowerCase();
+          const isLockedByOther = linkedEmail && linkedEmail !== curEmail;
+          const suffix = isLockedByOther ? ' 🔒 (Vinculado a outra conta)' : (linkedEmail && linkedEmail === curEmail ? ' ✓ (Sua Conta Google)' : '');
+          return `<option value="${d.id}">${this.escapeHtml(d.name)}${suffix}</option>`;
+        }).join('');
       myDocSelect.value = cfg.my_doctor_id || 'ALL';
     }
 
+    this.updateGoogleAuthBoxUI();
     this.updatePwaInstallButtonsVisibility();
     this.updateDeviceNotificationButtonUI();
     this.renderShiftReminderModal();
     if (modal) modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
+  },
+
+  // ================= LOGIN GOOGLE + DUPLO CHEQUE DE SEGURANÇA DO PLANTONISTA =================
+  initGoogleAuthListener() {
+    if (window.firebase && firebase.auth) {
+      try {
+        firebase.auth().onAuthStateChanged(user => {
+          if (user) {
+            this.state.googleUser = {
+              uid: user.uid,
+              name: user.displayName || user.email || 'Médico(a)',
+              email: (user.email || '').toLowerCase(),
+              photoURL: user.photoURL || ''
+            };
+            localStorage.setItem('scpg_google_auth_user', JSON.stringify(this.state.googleUser));
+          }
+          this.updateGoogleAuthBoxUI();
+        });
+      } catch (e) {}
+    }
+    this.updateGoogleAuthBoxUI();
+  },
+
+  updateGoogleAuthBoxUI() {
+    const loggedOutEl = document.getElementById('google-auth-logged-out');
+    const loggedInEl = document.getElementById('google-auth-logged-in');
+    const nameEl = document.getElementById('google-auth-user-name');
+    const emailEl = document.getElementById('google-auth-user-email');
+    const avatarEl = document.getElementById('google-auth-avatar');
+    const statusEl = document.getElementById('reminder-double-check-status');
+
+    const gUser = this.state.googleUser;
+    if (gUser && gUser.email) {
+      if (loggedOutEl) loggedOutEl.classList.add('hidden');
+      if (loggedInEl) loggedInEl.classList.remove('hidden');
+      if (nameEl) nameEl.textContent = gUser.name || 'Conta Google Conectada';
+      if (emailEl) emailEl.textContent = gUser.email;
+      if (avatarEl) avatarEl.textContent = String(gUser.name || gUser.email || 'G').trim().charAt(0).toUpperCase();
+    } else {
+      if (loggedOutEl) loggedOutEl.classList.remove('hidden');
+      if (loggedInEl) loggedInEl.classList.add('hidden');
+    }
+
+    const myDocId = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.my_doctor_id) || 'ALL';
+    const docObj = this.state.doctors.find(d => String(d.id) === String(myDocId));
+    if (statusEl) {
+      if (docObj) {
+        statusEl.textContent = `✓ Duplo cheque confirmado para Dr(a). ${docObj.name}${gUser && gUser.email ? ` (${gUser.email})` : ''}`;
+        statusEl.classList.remove('hidden');
+      } else {
+        statusEl.classList.add('hidden');
+      }
+    }
+  },
+
+  async signInWithGoogleForNotifications(fromDoubleCheckModal = false) {
+    if (window.firebase && firebase.auth) {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await firebase.auth().signInWithPopup(provider);
+        if (result && result.user) {
+          this.state.googleUser = {
+            uid: result.user.uid,
+            name: result.user.displayName || result.user.email || 'Médico(a)',
+            email: (result.user.email || '').toLowerCase(),
+            photoURL: result.user.photoURL || ''
+          };
+          localStorage.setItem('scpg_google_auth_user', JSON.stringify(this.state.googleUser));
+          this.updateGoogleAuthBoxUI();
+          this.showToast(`Autenticado com Google: ${this.state.googleUser.email}`, 'success');
+          if (fromDoubleCheckModal && this.state.pendingDoubleCheckDoctorId) {
+            this.openDoctorDoubleCheckModal(this.state.pendingDoubleCheckDoctorId);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('Popup Google Auth indisponível neste navegador, usando identificação no modal:', err);
+      }
+    }
+
+    if (!fromDoubleCheckModal) {
+      const targetDocId = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.my_doctor_id !== 'ALL')
+        ? this.state.shiftReminderConfig.my_doctor_id
+        : (this.state.doctors[0] && this.state.doctors[0].id);
+      if (targetDocId) {
+        this.openDoctorDoubleCheckModal(targetDocId);
+      }
+    }
+  },
+
+  async signOutGoogleForNotifications() {
+    if (window.firebase && firebase.auth) {
+      try {
+        await firebase.auth().signOut();
+      } catch (e) {}
+    }
+    this.state.googleUser = null;
+    localStorage.removeItem('scpg_google_auth_user');
+    this.updateGoogleAuthBoxUI();
+    this.showToast('Conta Google desconectada deste aparelho.', 'info');
+  },
+
+  handleReminderDoctorSelectChange(newDoctorId) {
+    if (!newDoctorId || newDoctorId === 'ALL') {
+      this.saveShiftReminderConfig(true);
+      this.updateGoogleAuthBoxUI();
+      return;
+    }
+    this.openDoctorDoubleCheckModal(newDoctorId);
+  },
+
+  normalizeFirstName(fullName) {
+    return String(fullName || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/^dr\.?\s+|^dra\.?\s+/i, '')
+      .trim()
+      .split(/\s+/)[0]
+      .toUpperCase();
+  },
+
+  openDoctorDoubleCheckModal(doctorId) {
+    const doc = this.state.doctors.find(d => String(d.id) === String(doctorId));
+    if (!doc) return;
+
+    const curEmail = (this.state.googleUser && this.state.googleUser.email || '').toLowerCase();
+    const linkedEmail = String(doc.linked_google_email || '').toLowerCase();
+
+    // Camada 1 do Duplo Cheque: Se o perfil já estiver vinculado ao e-mail de outro colega, bloqueia
+    if (linkedEmail && curEmail && linkedEmail !== curEmail && !this.state.isEditorMode) {
+      this.showToast(`Perfil de Dr(a). ${doc.name} já está vinculado a outra conta Google (${linkedEmail}).`, 'error');
+      const selectEl = document.getElementById('reminder-my-doctor-select');
+      if (selectEl) selectEl.value = this.state.shiftReminderConfig.my_doctor_id || 'ALL';
+      return;
+    }
+
+    this.state.pendingDoubleCheckDoctorId = String(doc.id);
+
+    const modal = document.getElementById('modal-doctor-double-check');
+    const googleAccEl = document.getElementById('double-check-google-account');
+    const targetDocEl = document.getElementById('double-check-target-doctor');
+    const inlineDocEl = document.getElementById('double-check-confirm-doc-inline');
+    const manualNameEl = document.getElementById('double-check-manual-name');
+    const manualEmailEl = document.getElementById('double-check-manual-email');
+    const secretInputEl = document.getElementById('double-check-secret-input');
+    const secretHintEl = document.getElementById('double-check-secret-hint');
+    const checkboxEl = document.getElementById('double-check-confirm-checkbox');
+
+    if (targetDocEl) targetDocEl.textContent = `Dr(a). ${doc.name}`;
+    if (inlineDocEl) inlineDocEl.textContent = `Dr(a). ${doc.name}`;
+    if (secretInputEl) secretInputEl.value = '';
+    if (checkboxEl) checkboxEl.checked = false;
+
+    const gUser = this.state.googleUser;
+    if (gUser && gUser.email) {
+      if (googleAccEl) googleAccEl.textContent = `${gUser.name} (${gUser.email})`;
+      if (manualNameEl) manualNameEl.value = gUser.name || '';
+      if (manualEmailEl) manualEmailEl.value = gUser.email || '';
+    } else {
+      if (googleAccEl) googleAccEl.textContent = 'Informe ou autentique sua conta Google abaixo';
+      if (manualNameEl) manualNameEl.value = '';
+      if (manualEmailEl) manualEmailEl.value = '';
+    }
+
+    const cleanPhone = this.cleanPhone(doc.phone);
+    if (secretHintEl) {
+      if (cleanPhone.length >= 4) {
+        const masked = `(••) •••••-${cleanPhone.slice(-4).replace(/\d/g, '•')}`;
+        secretHintEl.textContent = `Dica de segurança: digite os 4 últimos dígitos do telefone cadastrado de Dr(a). ${doc.name} ${masked} ou o CRM/PIN.`;
+      } else {
+        secretHintEl.textContent = `Como o telefone de Dr(a). ${doc.name} ainda não está cadastrado, digite os 4 últimos dígitos do seu celular ou o PIN da escala.`;
+      }
+    }
+
+    this.evaluateDoubleCheckNameMatch();
+
+    if (modal) modal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  },
+
+  evaluateDoubleCheckNameMatch() {
+    const doc = this.state.doctors.find(d => String(d.id) === String(this.state.pendingDoubleCheckDoctorId));
+    const warnBox = document.getElementById('double-check-mismatch-warning');
+    const warnText = document.getElementById('double-check-mismatch-text');
+    const manualNameEl = document.getElementById('double-check-manual-name');
+    if (!doc || !warnBox || !warnText) return;
+
+    const gName = (this.state.googleUser && this.state.googleUser.name) || (manualNameEl && manualNameEl.value) || '';
+    if (!gName.trim()) {
+      warnBox.classList.add('hidden');
+      return;
+    }
+
+    const googleFirst = this.normalizeFirstName(gName);
+    const docFirst = this.normalizeFirstName(doc.name);
+
+    if (googleFirst && docFirst && googleFirst !== docFirst) {
+      warnText.textContent = `Sua conta Google está identificada como "${gName}", mas você selecionou o perfil de "Dr(a). ${doc.name}". Para evitar receber notificações de outro plantonista por engano, confirme apenas se você for realmente Dr(a). ${doc.name}.`;
+      warnBox.classList.remove('hidden');
+    } else {
+      warnBox.classList.add('hidden');
+    }
+  },
+
+  cancelDoctorDoubleCheck() {
+    const modal = document.getElementById('modal-doctor-double-check');
+    if (modal) modal.classList.add('hidden');
+    this.state.pendingDoubleCheckDoctorId = null;
+
+    const selectEl = document.getElementById('reminder-my-doctor-select');
+    if (selectEl) {
+      selectEl.value = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.my_doctor_id) || 'ALL';
+    }
+  },
+
+  async confirmDoctorDoubleCheck() {
+    const doctorId = this.state.pendingDoubleCheckDoctorId;
+    const doc = this.state.doctors.find(d => String(d.id) === String(doctorId));
+    if (!doc) return;
+
+    const manualNameEl = document.getElementById('double-check-manual-name');
+    const manualEmailEl = document.getElementById('double-check-manual-email');
+    const secretInputEl = document.getElementById('double-check-secret-input');
+    const checkboxEl = document.getElementById('double-check-confirm-checkbox');
+
+    const gName = ((this.state.googleUser && this.state.googleUser.name) || (manualNameEl && manualNameEl.value) || '').trim();
+    const gEmail = ((this.state.googleUser && this.state.googleUser.email) || (manualEmailEl && manualEmailEl.value) || '').trim().toLowerCase();
+    const secretVal = (secretInputEl ? secretInputEl.value : '').trim();
+
+    if (!gEmail || !gEmail.includes('@')) {
+      this.showToast('Informe ou autentique seu e-mail Google para vincular as notificações.', 'warning');
+      return;
+    }
+
+    if (!checkboxEl || !checkboxEl.checked) {
+      this.showToast(`Marque a caixa confirmando que você é Dr(a). ${doc.name}.`, 'warning');
+      return;
+    }
+
+    const cleanPhone = this.cleanPhone(doc.phone);
+    const last4Phone = cleanPhone.length >= 4 ? cleanPhone.slice(-4) : '';
+    const cleanCrm = String(doc.crm || '').replace(/\D/g, '');
+    const savedPin = localStorage.getItem('escala_editor_pin') || '123456';
+
+    const googleFirst = this.normalizeFirstName(gName);
+    const docFirst = this.normalizeFirstName(doc.name);
+    const isSameFirstName = Boolean(googleFirst && docFirst && googleFirst === docFirst);
+
+    // Validação do Duplo Cheque:
+    // 1. Se o médico tem telefone cadastrado, confere os 4 últimos dígitos (ou CRM / PIN do editor)
+    // 2. Se o primeiro nome da Conta Google for diferente do perfil selecionado (ex: Henrique selecionando Jéssica),
+    //    exige obrigatoriamente os 4 últimos dígitos do telefone daquele médico ou o PIN de 6 dígitos da coordenação!
+    const matchesPhoneLast4 = Boolean(last4Phone && secretVal === last4Phone);
+    const matchesCrm = Boolean(cleanCrm && secretVal === cleanCrm);
+    const matchesPin = Boolean(secretVal === savedPin);
+
+    if (!isSameFirstName && !matchesPhoneLast4 && !matchesCrm && !matchesPin) {
+      this.showToast(`Duplo Cheque recusado: como a conta Google (${gName || gEmail}) diverge de Dr(a). ${doc.name}, informe os 4 últimos dígitos corretos do telefone de ${doc.name} ou o PIN da coordenação.`, 'error');
+      return;
+    }
+
+    if (last4Phone && !matchesPhoneLast4 && !matchesCrm && !matchesPin) {
+      this.showToast(`Digite os 4 últimos dígitos do telefone cadastrado de Dr(a). ${doc.name} para concluir o Duplo Cheque.`, 'warning');
+      return;
+    }
+
+    // Salva a conta Google autenticada localmente
+    this.state.googleUser = {
+      name: gName || doc.name,
+      email: gEmail
+    };
+    localStorage.setItem('scpg_google_auth_user', JSON.stringify(this.state.googleUser));
+
+    // Grava o vínculo no perfil do médico (Firestore + Estado Local) para bloquear que outro colega selecione este perfil por engano
+    doc.linked_google_email = gEmail;
+    doc.linked_google_name = gName || doc.name;
+    if (this.state.firebaseActive && this.state.firestoreDb) {
+      try {
+        await this.state.firestoreDb.collection('doctors').doc(String(doc.id)).set({
+          linked_google_email: gEmail,
+          linked_google_name: gName || doc.name,
+          linked_at: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {}
+    }
+
+    // Ativa as notificações para este profissional
+    this.state.shiftReminderConfig = {
+      enabled: true,
+      my_doctor_id: String(doc.id),
+      notify_shift_1h: true,
+      notify_clinical: true,
+      channel: 'inapp'
+    };
+    localStorage.setItem('shift_reminder_enabled', 'true');
+    localStorage.setItem('shift_reminder_my_doctor_id', String(doc.id));
+    localStorage.setItem('shift_reminder_notify_1h', 'true');
+    localStorage.setItem('shift_reminder_notify_clinical', 'true');
+
+    const selectEl = document.getElementById('reminder-my-doctor-select');
+    if (selectEl) selectEl.value = String(doc.id);
+
+    const modal = document.getElementById('modal-doctor-double-check');
+    if (modal) modal.classList.add('hidden');
+    this.state.pendingDoubleCheckDoctorId = null;
+
+    this.updateGoogleAuthBoxUI();
+    this.updateReminderActiveDot();
+    this.renderShiftReminderModal();
+    this.renderDoctorsCatalog();
+    if (this.state.viewingProfileDoctorId) {
+      this.updateProfileNotificationUI(this.state.viewingProfileDoctorId);
+    }
+
+    await this.requestDeviceNotificationPermission();
+    this.showToast(`Duplo Cheque confirmado! Notificações vinculadas a Dr(a). ${doc.name} (${gEmail}).`, 'success');
   },
 
   closeShiftReminderModal() {
@@ -3207,7 +3622,8 @@ const app = {
     ) {
       matchedOpt = 'PN';
     } else if (
-      upper.includes('TRATAMENTO CLÍNICO') || upper.includes('TRATAMENTO CLINICO') || upper.includes('TTO CLÍNICO') || upper.includes('TTO CLINICO')
+      upper.includes('TRATAMENTO CLÍNICO') || upper.includes('TRATAMENTO CLINICO') || upper.includes('TTO CLÍNICO') || upper.includes('TTO CLINICO') ||
+      upper.includes('INTERNOU POR') || upper.includes('INTERNOU PARA') || upper.includes('INDUÇÃO') || upper.includes('INDUCAO')
     ) {
       matchedOpt = 'TRATAMENTO CLÍNICO';
     }
@@ -3241,6 +3657,20 @@ const app = {
         timeInput.value = '';
       }
     }
+
+    // Preserva complemento não-destrutivo digitado na planilha (ex: "(mas. 4270 9/10)" ou "IG 24 sem | Internou por...")
+    let extra = str;
+    if (INTERNACAO_DELIVERY_TYPES.includes(matchedOpt)) {
+      extra = extra
+        .replace(/^(?:CST\s*\+\s*LTB|CST\s*\+\s*DIU|PN\s*\+\s*DIU|CST|PN|PARTO\s+NORMAL|CES[ÁA]REA)\b/i, '')
+        .replace(/\b(?:em|no dia)\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/i, '')
+        .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/, '')
+        .replace(/\b(?:[àa]s|as)?\s*\d{1,2}\s*(?::|h|H)\s*\d{2}\.?\b/i, '')
+        .replace(/\b(?:[àa]s|as)\s*$/i, '')
+        .replace(/^[\s.,;-]+|[\s.,;-]+$/g, '')
+        .trim();
+    }
+    this.state.evoInternacaoExtra = extra;
 
     this.renderInternacaoControlsUI();
   },
@@ -3292,6 +3722,7 @@ const app = {
     const intEl = document.getElementById('evo-input-internacao');
     const dateInput = document.getElementById('evo-birth-date');
     const timeInput = document.getElementById('evo-birth-time');
+    const extra = (this.state.evoInternacaoExtra || '').trim();
 
     if (INTERNACAO_DELIVERY_TYPES.includes(opt)) {
       const dVal = dateInput ? dateInput.value : '';
@@ -3299,17 +3730,25 @@ const app = {
       let birthInfo = '';
       if (dVal) {
         const [, m, d] = dVal.split('-');
-        birthInfo = `${d}/${m}`;
+        birthInfo = `em ${d}/${m}`;
       }
       if (tVal) {
         birthInfo = birthInfo ? `${birthInfo} às ${tVal}` : `às ${tVal}`;
       }
+      let composed = birthInfo ? `${opt} ${birthInfo}` : opt;
+      if (extra) {
+        composed = `${composed} ${extra}`;
+      }
       if (intEl) {
-        intEl.value = birthInfo ? `${opt} (${birthInfo})` : opt;
+        intEl.value = composed;
       }
     } else {
       if (intEl) {
-        intEl.value = opt;
+        if (extra && !extra.toUpperCase().includes('TRATAMENTO CL')) {
+          intEl.value = `${opt} • ${extra}`;
+        } else {
+          intEl.value = opt;
+        }
       }
     }
   },
@@ -3799,18 +4238,30 @@ const app = {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          ...payload,
+          sheet_id: this.getActiveMaternitySheetId()
+        })
       });
     } catch (e) {
       console.warn('Aviso ao enviar para o conector Google Sheets:', e);
     }
   },
 
+  setMaternitySheetPreset(sheetId) {
+    const input = document.getElementById('maternity-sheet-id-input');
+    if (input) input.value = sheetId;
+  },
+
   openMaternitySyncConfigModal() {
     const modal = document.getElementById('modal-maternity-sync-config');
     const input = document.getElementById('maternity-webhook-input');
+    const sheetIdInput = document.getElementById('maternity-sheet-id-input');
     if (input) {
       input.value = this.state.maternityWebhookUrl || localStorage.getItem('maternity_sheet_webhook') || '';
+    }
+    if (sheetIdInput) {
+      sheetIdInput.value = this.getActiveMaternitySheetId();
     }
     if (modal) modal.classList.remove('hidden');
     if (window.lucide) lucide.createIcons();
@@ -3823,21 +4274,31 @@ const app = {
 
   async saveMaternityWebhookUrl() {
     const input = document.getElementById('maternity-webhook-input');
+    const sheetIdInput = document.getElementById('maternity-sheet-id-input');
     const url = input ? input.value.trim() : '';
+    const rawSheet = sheetIdInput ? sheetIdInput.value.trim() : MATERNITY_SHEET_ID;
+    const match = rawSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    const cleanSheetId = match ? match[1] : (rawSheet || MATERNITY_SHEET_ID);
+
     this.state.maternityWebhookUrl = url;
+    this.state.maternitySheetId = cleanSheetId;
     localStorage.setItem('maternity_sheet_webhook', url);
+    localStorage.setItem('maternity_active_sheet_id_v22', cleanSheetId);
+    this.updateOpenSheetButtonLink();
 
     if (this.state.firebaseActive && this.state.firestoreDb) {
       try {
         await this.state.firestoreDb.collection('settings').doc('maternity_sheet_sync').set({
           webhook_url: url,
+          sheet_id: cleanSheetId,
           updated_at: new Date().toISOString()
         }, { merge: true });
       } catch (e) {}
     }
 
     this.closeMaternitySyncConfigModal();
-    this.showToast('Conector Google Sheets salvo para todos os dispositivos!', 'success');
+    await this.syncMaternityFromGoogleSheet(true);
+    this.showToast('Planilha e conector Google Sheets atualizados!', 'success');
   },
 
   copyAppsScriptSnippet() {
@@ -4679,24 +5140,8 @@ const app = {
       this.renderDoctorsCatalog();
       this.showToast(`Filtro individual de notificações de Dr(a). ${docName} desativado.`, 'info');
     } else {
-      this.state.shiftReminderConfig = {
-        enabled: true,
-        my_doctor_id: String(doctorId),
-        notify_shift_1h: true,
-        notify_clinical: true,
-        channel: 'inapp'
-      };
-      localStorage.setItem('shift_reminder_enabled', 'true');
-      localStorage.setItem('shift_reminder_my_doctor_id', String(doctorId));
-      localStorage.setItem('shift_reminder_notify_1h', 'true');
-      localStorage.setItem('shift_reminder_notify_clinical', 'true');
-
-      this.updateProfileNotificationUI(doctorId);
-      this.updateReminderActiveDot();
-      this.renderDoctorsCatalog();
-
-      await this.requestDeviceNotificationPermission();
-      this.showToast(`Notificações ativadas neste aparelho para Dr(a). ${docName}!`, 'success');
+      // Aciona o Duplo Cheque de Identidade para evitar que um médico ative notificações de outro colega por engano
+      this.openDoctorDoubleCheckModal(doctorId);
     }
   },
 
