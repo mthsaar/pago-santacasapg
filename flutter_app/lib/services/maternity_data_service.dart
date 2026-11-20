@@ -1,23 +1,28 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../models/clinical_models.dart';
 
 const String kFirebaseProjectId = 'pago---santa-casa-pg';
 
 class MaternityDataService extends ChangeNotifier {
+  static const MethodChannel _notifChannel =
+      MethodChannel('br.com.santacasapg/notifications');
+
   bool isEditorMode = false;
   String editorPin = '123456';
   String currentMonth = '2026-11';
-  int currentWeekIndex = 2; // Semana atual de Novembro
+  int currentWeekIndex = 3; // Semana atual (16/11 a 22/11)
   String selectedDate = '2026-11-20';
 
   String activeSheetId = kProvisionalSheetId;
   String appsScriptWebhookUrl = '';
   String lastSyncLabel = 'Sincronizando...';
 
-  // Conta Google + Duplo Cheque de Notificações
+  // Fluxo de Login Google > Perfil > CRM > Permissão de Notificação > Abre o App
+  bool hasCompletedOnboarding = false;
   String? googleUserName;
   String? googleUserEmail;
   String selectedNotificationDoctorId = 'ALL';
@@ -25,14 +30,17 @@ class MaternityDataService extends ChangeNotifier {
   bool notifyOneHourBeforeShift = true;
   bool notifyClinicalReminders = true;
 
-  // Seções colapsáveis do Fechamento
+  // Seções colapsáveis e Prontuários protegidos por senha no Fechamento
   bool statsProfessionalsCollapsed = false;
   bool statsPatientsCollapsed = false;
+  bool statsProntuariosCollapsed = false;
+  bool isProntuariosUnlocked = false;
 
   final List<DoctorModel> doctors = [];
   final List<ShiftEntryModel> shifts = [];
   final Map<String, MaternityBedModel> sheetBedsMap = {};
   final Map<String, MaternityBedModel> firebaseBedsMap = {};
+  final Map<String, PatientMedicalRecordModel> medicalRecordsByName = {};
   final List<String> extraBeds = [];
   bool sheetLoaded = false;
 
@@ -46,6 +54,12 @@ class MaternityDataService extends ChangeNotifier {
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
 
+  List<PatientMedicalRecordModel> get allMedicalRecordsSorted {
+    final list = medicalRecordsByName.values.toList();
+    list.sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+    return list;
+  }
+
   MaternityDataService() {
     _seedInitialDoctorsAndSchedule();
     _seedInitialProvisionalMaternitySnapshot();
@@ -53,10 +67,10 @@ class MaternityDataService extends ChangeNotifier {
   }
 
   Future<void> initSync() async {
-    await syncFromGoogleSheetAndFirestore();
+    await syncAllWithCloud();
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      syncFromGoogleSheetAndFirestore();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      syncAllWithCloud();
     });
   }
 
@@ -64,6 +78,42 @@ class MaternityDataService extends ChangeNotifier {
   void dispose() {
     _pollingTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> syncAllWithCloud({bool forceSheetPriority = false}) async {
+    await Future.wait([
+      _pullDoctorsFromFirestoreRest(),
+      _pullMedicalRecordsFromFirestoreRest(),
+      syncFromGoogleSheetAndFirestore(forceSheetPriority: forceSheetPriority),
+    ]);
+  }
+
+  /// Solicita permissão nativa de notificações ao Android (API 33+) e iOS
+  Future<void> requestNativeNotificationPermission({DoctorModel? doctor}) async {
+    notificationsEnabled = true;
+    notifyOneHourBeforeShift = true;
+    notifyClinicalReminders = true;
+    try {
+      await _notifChannel.invokeMethod('requestPermission');
+      if (doctor != null) {
+        await _notifChannel.invokeMethod('showNotification', {
+          'title': 'Santa Casa PG • Notificações Ativas',
+          'body':
+              'Dr(a). ${doctor.name}: Alertas de plantão (1h antes) e lembretes de pacientes ativados neste aparelho.',
+        });
+      }
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> triggerNativeNotification(String title, String body) async {
+    if (!notificationsEnabled) return;
+    try {
+      await _notifChannel.invokeMethod('showNotification', {
+        'title': title,
+        'body': body,
+      });
+    } catch (_) {}
   }
 
   void _seedInitialDoctorsAndSchedule() {
@@ -77,7 +127,7 @@ class MaternityDataService extends ChangeNotifier {
     doctors.clear();
     final nameToId = <String, String>{};
     for (int i = 0; i < initialNames.length; i++) {
-      final id = 'doc_${i + 1}';
+      final id = '${i + 1}';
       nameToId[initialNames[i]] = id;
       doctors.add(DoctorModel(
         id: id,
@@ -134,7 +184,7 @@ class MaternityDataService extends ChangeNotifier {
     rawSchedule.forEach((day, dayMap) {
       final dateStr = '2026-11-${day.toString().padLeft(2, '0')}';
       dayMap.forEach((slotRole, docName) {
-        final docId = nameToId[docName] ?? 'doc_1';
+        final docId = nameToId[docName] ?? '1';
         final shiftType = roleToShiftType[slotRole] ?? 'morning';
         shifts.add(ShiftEntryModel(
           id: '${dateStr}_${shiftType}_$slotRole',
@@ -147,11 +197,112 @@ class MaternityDataService extends ChangeNotifier {
       });
     });
 
-    doctors.sort((a, b) => a.name.compareTo(b.name));
+    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
 
-  /// Snapshot inicial fiel à planilha provisória (1Vrv-BaXEsZtSsB6G3Ix-eK3Xk4rcos-HYp9zQJVVcM0)
-  /// garantindo carregamento imediato mesmo antes da resposta de rede.
+  /// Sincroniza a coleção `doctors` do Firebase Firestore para que qualquer médico
+  /// adicionado na Web apareça imediatamente no app Android/iOS e vice-versa.
+  Future<void> _pullDoctorsFromFirestoreRest() async {
+    try {
+      final url = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/doctors?pageSize=200',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode != 200) return;
+
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      final docs = decoded['documents'] as List<dynamic>? ?? [];
+      if (docs.isEmpty) return;
+
+      final fetchedDoctors = <DoctorModel>[];
+      for (final d in docs) {
+        final map = d as Map<String, dynamic>;
+        final fullPath = map['name']?.toString() ?? '';
+        final docIdFromPath = fullPath.split('/').last;
+        final fields = map['fields'] as Map<String, dynamic>? ?? {};
+
+        String strField(String k) {
+          final f = fields[k] as Map<String, dynamic>?;
+          if (f == null) return '';
+          return (f['stringValue'] ?? f['integerValue'] ?? '').toString();
+        }
+
+        final name = strField('name').trim();
+        if (name.isEmpty) continue;
+        final id = strField('id').trim().isNotEmpty ? strField('id').trim() : docIdFromPath;
+
+        fetchedDoctors.add(DoctorModel(
+          id: id,
+          name: name,
+          phone: strField('phone'),
+          crm: strField('crm'),
+          specialty: strField('specialty').isNotEmpty ? strField('specialty') : 'GO',
+          photoUrl: strField('photo_url'),
+          linkedGoogleEmail: strField('linked_google_email'),
+          linkedGoogleName: strField('linked_google_name'),
+        ));
+      }
+
+      if (fetchedDoctors.isNotEmpty) {
+        // Mescla por ID e Nome para manter médicos do Firebase e locais sincronizados
+        final byId = <String, DoctorModel>{};
+        for (final fd in fetchedDoctors) {
+          byId[fd.id] = fd;
+        }
+        doctors
+          ..clear()
+          ..addAll(byId.values);
+        doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  /// Adiciona ou edita um médico e salva diretamente no Firebase Firestore
+  Future<void> saveOrUpdateDoctorToCloud(DoctorModel doc) async {
+    final idx = doctors.indexWhere((d) => d.id == doc.id);
+    if (idx >= 0) {
+      doctors[idx] = doc;
+    } else {
+      doctors.add(doc);
+    }
+    doctors.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    notifyListeners();
+
+    try {
+      final fsUrl = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/doctors/${doc.id}',
+      );
+      await http.patch(
+        fsUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'fields': {
+            'id': {'stringValue': doc.id},
+            'name': {'stringValue': doc.name},
+            'phone': {'stringValue': doc.phone},
+            'crm': {'stringValue': doc.crm},
+            'specialty': {'stringValue': doc.specialty},
+            'photo_url': {'stringValue': doc.photoUrl},
+            'linked_google_email': {'stringValue': doc.linkedGoogleEmail},
+            'linked_google_name': {'stringValue': doc.linkedGoogleName},
+          }
+        }),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> deleteDoctorFromCloud(String doctorId) async {
+    doctors.removeWhere((d) => d.id == doctorId);
+    notifyListeners();
+    try {
+      final fsUrl = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/doctors/$doctorId',
+      );
+      await http.delete(fsUrl);
+    } catch (_) {}
+  }
+
   void _seedInitialProvisionalMaternitySnapshot() {
     final seedRows = <MaternityBedModel>[
       const MaternityBedModel(
@@ -298,6 +449,7 @@ class MaternityDataService extends ChangeNotifier {
 
     for (final row in seedRows) {
       sheetBedsMap[normalizeLeitoKey(row.leito)] = row;
+      _upsertMedicalRecordFromBed(row, isDischarge: false, syncCloud: false);
     }
     sheetLoaded = true;
   }
@@ -308,6 +460,118 @@ class MaternityDataService extends ChangeNotifier {
     return normalizeLeitoKey(leito)
         .replaceAll('É', 'E')
         .replaceAll(RegExp(r'[^A-Z0-9_-]'), '_');
+  }
+
+  String _patientNameKey(String name) {
+    return name
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9À-Ú]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+  }
+
+  void _upsertMedicalRecordFromBed(
+    MaternityBedModel bed, {
+    required bool isDischarge,
+    bool syncCloud = true,
+  }) {
+    final cleanName = bed.nome.trim();
+    if (cleanName.isEmpty) return;
+
+    final key = _patientNameKey(cleanName);
+    final existing = medicalRecordsByName[key];
+    final nowIso = DateTime.now().toIso8601String();
+
+    final record = PatientMedicalRecordModel(
+      id: existing?.id ?? 'pront_${bed.leito.replaceAll(' ', '_')}_$key',
+      nome: cleanName,
+      leito: bed.leito,
+      paridade: bed.paridade.isNotEmpty ? bed.paridade : (existing?.paridade ?? ''),
+      tipoSanguineo:
+          bed.tipoSanguineo.isNotEmpty ? bed.tipoSanguineo : (existing?.tipoSanguineo ?? ''),
+      altoRisco: bed.altoRisco.isNotEmpty ? bed.altoRisco : (existing?.altoRisco ?? ''),
+      internacaoPor:
+          bed.internacaoPor.isNotEmpty ? bed.internacaoPor : (existing?.internacaoPor ?? ''),
+      observacoes:
+          bed.observacoes.isNotEmpty ? bed.observacoes : (existing?.observacoes ?? ''),
+      admittedAt: existing?.admittedAt.isNotEmpty == true ? existing!.admittedAt : nowIso,
+      dischargedAt: isDischarge ? nowIso : (existing?.dischargedAt ?? ''),
+      status: isDischarge ? 'discharged' : 'active',
+    );
+
+    medicalRecordsByName[key] = record;
+
+    if (syncCloud) {
+      _pushMedicalRecordToFirestore(record);
+    }
+  }
+
+  Future<void> _pullMedicalRecordsFromFirestoreRest() async {
+    try {
+      final url = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/maternity_admissions?pageSize=300',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 7));
+      if (res.statusCode != 200) return;
+
+      final decoded = jsonDecode(res.body) as Map<String, dynamic>;
+      final docs = decoded['documents'] as List<dynamic>? ?? [];
+      for (final d in docs) {
+        final map = d as Map<String, dynamic>;
+        final docId = (map['name']?.toString() ?? '').split('/').last;
+        final fields = map['fields'] as Map<String, dynamic>? ?? {};
+
+        String strField(String k) =>
+            (fields[k] as Map<String, dynamic>?)?['stringValue']?.toString() ?? '';
+
+        final nome = strField('nome').trim();
+        if (nome.isEmpty) continue;
+        final key = _patientNameKey(nome);
+        medicalRecordsByName[key] = PatientMedicalRecordModel(
+          id: strField('id').isNotEmpty ? strField('id') : docId,
+          nome: nome,
+          leito: strField('leito'),
+          paridade: strField('paridade'),
+          tipoSanguineo: strField('tipo_sanguineo'),
+          altoRisco: strField('alto_risco'),
+          internacaoPor: strField('internacao_por'),
+          observacoes: strField('observacoes'),
+          admittedAt: strField('admitted_at'),
+          dischargedAt: strField('discharged_at'),
+          status: strField('status').isNotEmpty ? strField('status') : 'active',
+        );
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _pushMedicalRecordToFirestore(PatientMedicalRecordModel rec) async {
+    try {
+      final safeDocId = rec.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final url = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/$kFirebaseProjectId/databases/(default)/documents/maternity_admissions/$safeDocId',
+      );
+      await http.patch(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'fields': {
+            'id': {'stringValue': safeDocId},
+            'nome': {'stringValue': rec.nome},
+            'leito': {'stringValue': rec.leito},
+            'paridade': {'stringValue': rec.paridade},
+            'tipo_sanguineo': {'stringValue': rec.tipoSanguineo},
+            'alto_risco': {'stringValue': rec.altoRisco},
+            'internacao_por': {'stringValue': rec.internacaoPor},
+            'observacoes': {'stringValue': rec.observacoes},
+            'admitted_at': {'stringValue': rec.admittedAt},
+            'discharged_at': {'stringValue': rec.dischargedAt},
+            'status': {'stringValue': rec.status},
+            'month': {'stringValue': currentMonth},
+          }
+        }),
+      );
+    } catch (_) {}
   }
 
   List<MaternityBedGroup> getAllMaternityGroups() {
@@ -349,7 +613,6 @@ class MaternityDataService extends ChangeNotifier {
     return MaternityBedModel(leito: leito);
   }
 
-  /// Sincronização Bidirecional: Planilha Google Sheets ⇄ Banco Firebase Firestore
   Future<bool> syncFromGoogleSheetAndFirestore({bool forceSheetPriority = false}) async {
     try {
       final url = Uri.parse(
@@ -368,7 +631,6 @@ class MaternityDataService extends ChangeNotifier {
         return true;
       }
     } catch (_) {
-      // Fallback para leitura do Firebase Firestore REST API (caso o navegador bloqueie CORS direto do CSV)
       await _pullBedsFromFirestoreRest();
     }
     final now = DateTime.now();
@@ -409,7 +671,6 @@ class MaternityDataService extends ChangeNotifier {
         continue;
       }
 
-      // Auto-correção de linha duplicada (ex: dois "321-1" seguidos na planilha, mapeando o segundo para "321-2")
       if (newSheetMap.containsKey(upperLeito) && newSheetMap[upperLeito]!.isOccupied) {
         if (upperLeito.endsWith('-1')) {
           final twin = upperLeito.replaceAll(RegExp(r'-1$'), '-2');
@@ -433,6 +694,16 @@ class MaternityDataService extends ChangeNotifier {
         updatedAt: DateTime.now().toIso8601String(),
         source: 'google_sheets',
       );
+
+      // Se havia uma paciente neste leito antes e agora o leito esvaziou na planilha, registra a alta no Prontuário!
+      final prevInSheet = sheetBedsMap[upperLeito];
+      if (prevInSheet != null &&
+          prevInSheet.nome.trim().isNotEmpty &&
+          entry.nome.trim().isEmpty) {
+        _upsertMedicalRecordFromBed(prevInSheet, isDischarge: true, syncCloud: true);
+      } else if (entry.nome.trim().isNotEmpty) {
+        _upsertMedicalRecordFromBed(entry, isDischarge: false, syncCloud: false);
+      }
 
       newSheetMap[upperLeito] = entry;
       if (!knownSet.contains(upperLeito)) {
@@ -484,24 +755,32 @@ class MaternityDataService extends ChangeNotifier {
           sheetBaselineSig: strField('sheet_baseline_sig'),
         );
         firebaseBedsMap[normalizeLeitoKey(leito)] = model;
+        if (model.nome.trim().isNotEmpty) {
+          _upsertMedicalRecordFromBed(model, isDischarge: false, syncCloud: false);
+        }
       }
     } catch (_) {}
   }
 
-  /// Salva evolução ou alta no Banco de Dados (com log de auditoria contra perda de dados) e na Planilha
   Future<void> saveBedEvolution(MaternityBedModel updatedBed) async {
     final key = normalizeLeitoKey(updatedBed.leito);
     final prevBed = getBedData(updatedBed.leito);
-    final baselineSheetSig = (sheetBedsMap[key] ?? MaternityBedModel(leito: updatedBed.leito)).signature;
+    final baselineSheetSig =
+        (sheetBedsMap[key] ?? MaternityBedModel(leito: updatedBed.leito)).signature;
     final nowIso = DateTime.now().toIso8601String();
 
-    // 1. Grava snapshot de auditoria para garantir zero perda de dados da planilha
     auditHistoryLogs.add({
       'timestamp': nowIso,
       'leito': updatedBed.leito,
       'previous': prevBed.signature,
       'updated': updatedBed.signature,
     });
+
+    if (updatedBed.nome.trim().isNotEmpty) {
+      _upsertMedicalRecordFromBed(updatedBed, isDischarge: false, syncCloud: true);
+    } else if (prevBed.nome.trim().isNotEmpty) {
+      _upsertMedicalRecordFromBed(prevBed, isDischarge: true, syncCloud: true);
+    }
 
     final record = updatedBed.copyWith(
       updatedAt: nowIso,
@@ -513,7 +792,6 @@ class MaternityDataService extends ChangeNotifier {
     sheetBedsMap[key] = record;
     notifyListeners();
 
-    // 2. Persiste no Firebase Cloud Firestore via REST API
     try {
       final docId = leitoToDocId(record.leito);
       final fsUrl = Uri.parse(
@@ -539,7 +817,6 @@ class MaternityDataService extends ChangeNotifier {
       );
     } catch (_) {}
 
-    // 3. Se o conector Google Apps Script estiver configurado, atualiza a linha na planilha
     if (appsScriptWebhookUrl.trim().isNotEmpty) {
       try {
         await http.post(
@@ -561,84 +838,45 @@ class MaternityDataService extends ChangeNotifier {
   }
 
   Future<void> dischargeBed(String leito) async {
+    final prev = getBedData(leito);
+    if (prev.nome.trim().isNotEmpty) {
+      _upsertMedicalRecordFromBed(prev, isDischarge: true, syncCloud: true);
+    }
     await saveBedEvolution(MaternityBedModel(leito: leito));
   }
 
   /// ==========================================================================
-  /// DUPLO CHEQUE DE SEGURANÇA (CONTA GOOGLE ⇄ PERFIL DO PLANTONISTA)
+  /// FLUXO SIMPLIFICADO: LOGIN GOOGLE > PERFIL > CONFIRMA COM CRM
   /// ==========================================================================
-  String normalizeFirstName(String fullName) {
-    final cleaned = fullName
-        .toUpperCase()
-        .replaceAll(RegExp(r'^DR\.?\s+|^DRA\.?\s+'), '')
-        .trim();
-    if (cleaned.isEmpty) return '';
-    return cleaned.split(RegExp(r'\s+')).first;
-  }
-
-  bool isNameMismatchWithGoogle(DoctorModel doc, String googleName) {
-    if (googleName.trim().isEmpty) return false;
-    final gFirst = normalizeFirstName(googleName);
-    final dFirst = normalizeFirstName(doc.name);
-    return gFirst.isNotEmpty && dFirst.isNotEmpty && gFirst != dFirst;
-  }
-
-  /// Valida o Duplo Cheque antes de vincular as notificações de um médico:
-  /// 1. Bloqueia se o perfil já estiver vinculado ao e-mail de outro colega.
-  /// 2. Se o nome da conta Google divergir do perfil selecionado (ex: Henrique selecionando Jéssica)
-  ///    ou se o profissional tiver telefone cadastrado, exige os 4 últimos dígitos do telefone, CRM ou PIN.
-  String? verifyAndClaimDoctorProfile({
+  String? confirmProfileWithCrm({
     required DoctorModel doctor,
-    required String googleName,
     required String googleEmail,
-    required String secretInput,
-    required bool personalConfirmationChecked,
+    required String googleName,
+    required String crmInput,
   }) {
-    final email = googleEmail.trim().toLowerCase();
-    if (email.isEmpty || !email.contains('@')) {
-      return 'Informe um e-mail Google válido para vincular as notificações.';
-    }
-    if (!personalConfirmationChecked) {
-      return 'Marque a confirmação de que você é Dr(a). ${doctor.name}.';
+    final cleanInputCrm = crmInput.replaceAll(RegExp(r'\D'), '');
+    if (cleanInputCrm.isEmpty) {
+      return 'Digite o número do seu CRM para confirmar o perfil.';
     }
 
-    if (doctor.linkedGoogleEmail.isNotEmpty &&
-        doctor.linkedGoogleEmail.toLowerCase() != email &&
-        !isEditorMode) {
-      return 'Este perfil já está vinculado exclusivamente à conta ${doctor.linkedGoogleEmail}.';
+    final existingCrm = doctor.crm.replaceAll(RegExp(r'\D'), '');
+    if (existingCrm.isNotEmpty && existingCrm != cleanInputCrm) {
+      return 'CRM informado ($cleanInputCrm) não confere com o CRM cadastrado para Dr(a). ${doctor.name}.';
     }
 
-    final cleanPhone = doctor.phone.replaceAll(RegExp(r'\D'), '');
-    final last4Phone = cleanPhone.length >= 4 ? cleanPhone.substring(cleanPhone.length - 4) : '';
-    final cleanCrm = doctor.crm.replaceAll(RegExp(r'\D'), '');
-    final secret = secretInput.trim();
-
-    final matchesPhoneLast4 = last4Phone.isNotEmpty && secret == last4Phone;
-    final matchesCrm = cleanCrm.isNotEmpty && secret == cleanCrm;
-    final matchesPin = secret == editorPin;
-    final sameFirstName = !isNameMismatchWithGoogle(doctor, googleName);
-
-    if (!sameFirstName && !matchesPhoneLast4 && !matchesCrm && !matchesPin) {
-      return 'Duplo Cheque recusado: sua conta Google ($googleName) diverge de Dr(a). ${doctor.name}. Informe os 4 últimos dígitos do telefone de ${doctor.name} ou o PIN da coordenação.';
-    }
-
-    if (last4Phone.isNotEmpty && !matchesPhoneLast4 && !matchesCrm && !matchesPin) {
-      return 'Digite os 4 últimos dígitos do telefone cadastrado de Dr(a). ${doctor.name} para concluir o Duplo Cheque.';
-    }
-
-    googleUserName = googleName.trim().isNotEmpty ? googleName.trim() : doctor.name;
-    googleUserEmail = email;
-    doctor.linkedGoogleEmail = email;
-    doctor.linkedGoogleName = googleUserName!;
+    // Se o médico ainda não tinha CRM salvo no cadastro, já grava o CRM no perfil dele no Firebase
+    doctor.crm = cleanInputCrm;
+    doctor.linkedGoogleEmail = googleEmail.trim().toLowerCase();
+    doctor.linkedGoogleName = googleName.trim().isNotEmpty ? googleName.trim() : doctor.name;
+    googleUserEmail = doctor.linkedGoogleEmail;
+    googleUserName = doctor.linkedGoogleName;
     selectedNotificationDoctorId = doctor.id;
-    notificationsEnabled = true;
+
+    saveOrUpdateDoctorToCloud(doctor);
     notifyListeners();
-    return null; // Sucesso!
+    return null;
   }
 
-  /// ==========================================================================
-  /// ESCALA SEMANAL, PLANTÃO AGORA E DESFAZER / AVANÇAR
-  /// ==========================================================================
   List<ShiftEntryModel> getDoctorsOnCallNow() {
     final now = DateTime.now();
     final hour = now.hour;
@@ -670,43 +908,6 @@ class MaternityDataService extends ChangeNotifier {
       }
     }
     return unique;
-  }
-
-  List<DoctorModel> getDoctorsOnCallAtTime(String timeStr, String dateStr) {
-    final parts = timeStr.split(':');
-    final hour = int.tryParse(parts.first) ?? 12;
-    List<String> activeTypes;
-    if (hour >= 7 && hour < 13) {
-      activeTypes = ['morning', 'routine'];
-    } else if (hour >= 13 && hour < 19) {
-      activeTypes = ['afternoon'];
-    } else if (hour >= 19 && hour < 23) {
-      activeTypes = ['evening', 'night'];
-    } else {
-      activeTypes = ['night'];
-    }
-
-    var matching = shifts
-        .where((s) => s.date == dateStr && activeTypes.contains(s.shiftType))
-        .toList();
-    if (matching.isEmpty) {
-      matching = shifts
-          .where((s) => s.date == selectedDate && activeTypes.contains(s.shiftType))
-          .toList();
-    }
-
-    final seen = <String>{};
-    final result = <DoctorModel>[];
-    for (final s in matching) {
-      if (seen.add(s.doctorId)) {
-        final doc = doctors.firstWhere(
-          (d) => d.id == s.doctorId,
-          orElse: () => DoctorModel(id: s.doctorId, name: s.doctorName),
-        );
-        result.add(doc);
-      }
-    }
-    return result;
   }
 
   void assignDoctorToShift({
@@ -771,22 +972,6 @@ class MaternityDataService extends ChangeNotifier {
       date: date,
       time: time,
     ));
-    notifyListeners();
-  }
-
-  void removeClinicalReminder(String id) {
-    clinicalReminders.removeWhere((r) => r.id == id);
-    notifyListeners();
-  }
-
-  void saveOrUpdateDoctor(DoctorModel doc) {
-    final idx = doctors.indexWhere((d) => d.id == doc.id);
-    if (idx >= 0) {
-      doctors[idx] = doc;
-    } else {
-      doctors.add(doc);
-    }
-    doctors.sort((a, b) => a.name.compareTo(b.name));
     notifyListeners();
   }
 

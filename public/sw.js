@@ -3,7 +3,7 @@
  * Estratégia Network-First (Sempre busca a versão mais recente na internet ao abrir na Tela Inicial)
  */
 
-const CACHE_NAME = 'santacasapg-escala-v22';
+const CACHE_NAME = 'santacasapg-escala-v23';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

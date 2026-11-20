@@ -2136,6 +2136,12 @@ const app = {
             discharged_at: nowIso,
             updated_at: nowIso
           }, true);
+        } else if (hasAnySheetVal && sh.nome) {
+          this.upsertMaternityAdmissionRecord({
+            ...sh,
+            admitted_at: (fb && fb.admitted_at && fb.nome === sh.nome) ? fb.admitted_at : nowIso,
+            updated_at: nowIso
+          }, false);
         }
 
         const prevAdmittedAt = (fb && fb.admitted_at && fb.nome && fb.nome === sh.nome)
@@ -4577,6 +4583,7 @@ const app = {
             leito,
             nome: (data.nome || '').trim(),
             paridade: (data.paridade || '').trim(),
+            tipo_sanguineo: (data.tipo_sanguineo || '').trim(),
             alto_risco: (data.alto_risco || '').trim(),
             internacao_por: (data.internacao_por || '').trim(),
             observacoes: (data.observacoes || '').trim(),
@@ -4986,6 +4993,141 @@ const app = {
       </div>
     `;
 
+    this.state.lastProntuariosList = allPatients;
+    this.renderProntuariosSection();
+
+    if (window.lucide) lucide.createIcons();
+  },
+
+  formatProntuarioDateTime(isoStr) {
+    if (!isoStr) return 'Registrado na planilha';
+    const dt = new Date(isoStr);
+    if (isNaN(dt.getTime())) return isoStr;
+    return dt.toLocaleDateString('pt-BR') + ' às ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  },
+
+  unlockProntuariosSection() {
+    const input = document.getElementById('prontuarios-pin-input');
+    const typed = (input ? input.value : '').trim();
+    const savedPin = localStorage.getItem('escala_editor_pin') || '123456';
+    if (typed === savedPin) {
+      this.state.prontuariosUnlocked = true;
+      this.renderProntuariosSection();
+      this.showToast('Prontuários desbloqueados com sucesso!', 'success');
+    } else {
+      this.showToast('Senha incorreta.', 'error');
+    }
+  },
+
+  lockProntuariosSection() {
+    this.state.prontuariosUnlocked = false;
+    this.renderProntuariosSection();
+  },
+
+  filterProntuariosList(query) {
+    this.state.prontuariosSearchQuery = query || '';
+    this.renderProntuariosSection();
+  },
+
+  renderProntuariosSection() {
+    const container = document.getElementById('stats-prontuarios-content');
+    const pill = document.getElementById('stats-prontuarios-count-pill');
+    if (!container) return;
+
+    const allList = [...(this.state.lastProntuariosList || [])].filter(p => p && (p.nome || p.internacao_por));
+    allList.sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+
+    if (pill) {
+      pill.textContent = this.state.prontuariosUnlocked
+        ? `${allList.length} prontuários`
+        : `🔒 Protegido (${allList.length})`;
+    }
+
+    if (!this.state.prontuariosUnlocked) {
+      container.innerHTML = `
+        <div class="max-w-md mx-auto py-5 px-4 text-center space-y-3 bg-m3-containerLow/60 rounded-2xl border border-m3-outlineVariant/60">
+          <div class="w-12 h-12 rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center mx-auto">
+            <i data-lucide="lock" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h4 class="font-extrabold text-brand-950 text-sm">Acesso Protegido aos Prontuários</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Digite a senha de 6 dígitos para consultar os prontuários cadastrados por nome, data de inserção e data de alta.</p>
+          </div>
+          <div class="flex items-center gap-2 justify-center max-w-xs mx-auto pt-1">
+            <input type="password" id="prontuarios-pin-input" inputmode="numeric" maxlength="6" placeholder="Senha (6 dígitos)"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();app.unlockProntuariosSection();}"
+                   class="flex-1 bg-white border border-m3-outlineVariant rounded-xl px-3 py-2 text-xs font-extrabold text-center tracking-widest text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+            <button type="button" onclick="app.unlockProntuariosSection()"
+                    class="px-4 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-extrabold shadow-xs transition">
+              Desbloquear
+            </button>
+          </div>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+
+    const q = String(this.state.prontuariosSearchQuery || '').trim().toLowerCase();
+    const filtered = q
+      ? allList.filter(p =>
+          String(p.nome || '').toLowerCase().includes(q) ||
+          String(p.leito || '').toLowerCase().includes(q) ||
+          String(p.internacao_por || '').toLowerCase().includes(q) ||
+          String(p.alto_risco || '').toLowerCase().includes(q)
+        )
+      : allList;
+
+    container.innerHTML = `
+      <div class="space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="relative flex-1 min-w-[220px]">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5"></i>
+            <input type="text" value="${this.escapeHtml(this.state.prontuariosSearchQuery || '')}"
+                   oninput="app.filterProntuariosList(this.value)"
+                   placeholder="Buscar prontuário por nome da paciente, leito ou motivo..."
+                   class="w-full pl-9 pr-4 py-2 bg-m3-containerLow border border-m3-outlineVariant rounded-full text-xs font-semibold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
+          </div>
+          <button type="button" onclick="app.lockProntuariosSection()"
+                  class="px-3.5 py-2 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 text-xs font-extrabold flex items-center gap-1.5 transition">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            <span>Bloquear Prontuários</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          ${filtered.map(rec => {
+            const isDischarged = rec.status === 'discharged' || Boolean(rec.discharged_at);
+            return `
+              <div class="p-3.5 rounded-2xl bg-m3-containerLow/70 border border-m3-outlineVariant/60 space-y-1.5 text-xs">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="font-extrabold text-brand-950 text-sm leading-snug">
+                    ${this.escapeHtml(rec.nome || 'Paciente sem nome informado')}
+                  </div>
+                  <span class="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap ${
+                    isDischarged
+                      ? 'bg-scred-100 text-scred-800 border border-scred-200'
+                      : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                  }">
+                    ${isDischarged ? 'Alta Hospitalar' : `Internada (${this.escapeHtml(rec.leito)})`}
+                  </span>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-brand-800">
+                  <span>Inserção: <strong>${this.escapeHtml(this.formatProntuarioDateTime(rec.admitted_at))}</strong></span>
+                  <span>Alta: <strong>${rec.discharged_at ? this.escapeHtml(this.formatProntuarioDateTime(rec.discharged_at)) : 'Em internação'}</strong></span>
+                </div>
+                <div class="pt-1 border-t border-m3-outlineVariant/40 text-[11px] text-slate-700 space-y-0.5">
+                  <div><strong>Leito:</strong> ${this.escapeHtml(rec.leito || '—')} • <strong>Paridade:</strong> ${this.escapeHtml(rec.paridade || '—')} ${rec.tipo_sanguineo ? `• <strong>T.S.:</strong> ${this.escapeHtml(rec.tipo_sanguineo)}` : ''}</div>
+                  ${rec.alto_risco ? `<div><strong class="text-scred-700">Alto Risco:</strong> ${this.escapeHtml(rec.alto_risco)}</div>` : ''}
+                  ${rec.internacao_por ? `<div><strong>Internação por:</strong> ${this.escapeHtml(rec.internacao_por)}</div>` : ''}
+                  ${rec.observacoes ? `<div><strong>Observações:</strong> ${this.escapeHtml(rec.observacoes)}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
     if (window.lucide) lucide.createIcons();
   },
 

@@ -238,6 +238,64 @@ class ClinicalReminderModel {
   });
 }
 
+/// Modelo de Prontuário Histórico da Paciente (Cadastrado por Nome no Fechamento)
+class PatientMedicalRecordModel {
+  final String id;
+  final String nome;
+  final String leito;
+  final String paridade;
+  final String tipoSanguineo;
+  final String altoRisco;
+  final String internacaoPor;
+  final String observacoes;
+  final String admittedAt; // Data/hora de inserção no sistema
+  final String dischargedAt; // Data/hora de alta (vazio se ainda internada)
+  final String status; // 'active' ou 'discharged'
+
+  const PatientMedicalRecordModel({
+    required this.id,
+    required this.nome,
+    required this.leito,
+    this.paridade = '',
+    this.tipoSanguineo = '',
+    this.altoRisco = '',
+    this.internacaoPor = '',
+    this.observacoes = '',
+    required this.admittedAt,
+    this.dischargedAt = '',
+    this.status = 'active',
+  });
+
+  bool get isDischarged => status == 'discharged' || dischargedAt.trim().isNotEmpty;
+
+  PatientMedicalRecordModel copyWith({
+    String? nome,
+    String? leito,
+    String? paridade,
+    String? tipoSanguineo,
+    String? altoRisco,
+    String? internacaoPor,
+    String? observacoes,
+    String? admittedAt,
+    String? dischargedAt,
+    String? status,
+  }) {
+    return PatientMedicalRecordModel(
+      id: id,
+      nome: nome ?? this.nome,
+      leito: leito ?? this.leito,
+      paridade: paridade ?? this.paridade,
+      tipoSanguineo: tipoSanguineo ?? this.tipoSanguineo,
+      altoRisco: altoRisco ?? this.altoRisco,
+      internacaoPor: internacaoPor ?? this.internacaoPor,
+      observacoes: observacoes ?? this.observacoes,
+      admittedAt: admittedAt ?? this.admittedAt,
+      dischargedAt: dischargedAt ?? this.dischargedAt,
+      status: status ?? this.status,
+    );
+  }
+}
+
 /// ============================================================================
 /// 1. PARSER NÃO-DESTRUTIVO DE PARIDADE (G P C A E M de 0 a 20 • 0 oculta letra)
 /// ============================================================================

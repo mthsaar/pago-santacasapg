@@ -725,6 +725,35 @@
           <div id="stats-patients-content"></div>
         </div>
       </div>
+
+      <!-- SEÇÃO COLAPSÁVEL 3: PRONTUÁRIOS (HISTÓRICO NOMINAL DE PACIENTES COM DATA DE INSERÇÃO E ALTA, PROTEGIDO POR SENHA) -->
+      <div class="m3-card overflow-hidden">
+        <div onclick="app.toggleStatsSection('prontuarios')"
+             class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center shrink-0">
+              <i data-lucide="folder-lock" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Prontuários • Histórico Nominal de Pacientes</h3>
+              <p class="text-[11px] text-slate-500 font-medium">Cadastradas por nome com data de inserção, data de alta e dados completos da planilha (protegido por senha)</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <span id="stats-prontuarios-count-pill" class="hidden sm:inline-block text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-scred-50 text-scred-700 border border-scred-200">
+              Protegido
+            </span>
+            <div class="w-8 h-8 rounded-full bg-white border border-m3-outlineVariant/60 flex items-center justify-center text-brand-950">
+              <i id="chevron-stats-prontuarios" data-lucide="chevron-up" class="w-4 h-4 transition-transform duration-200"></i>
+            </div>
+          </div>
+        </div>
+
+        <div id="body-stats-prontuarios" class="p-4 sm:p-5 space-y-4">
+          <div id="stats-prontuarios-content"></div>
+        </div>
+      </div>
     </section>
 
   </main>
@@ -2006,10 +2035,10 @@
   <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
   <!-- Scripts -->
-  <script src="/initial-data.js?v=22"></script>
-  <script src="/app.js?v=22"></script>
+  <script src="/initial-data.js?v=23"></script>
+  <script src="/app.js?v=23"></script>
   <script>
-    const CURRENT_APP_VERSION = "v22-202611201135";
+    const CURRENT_APP_VERSION = "v23-202611201245";
 
     async function checkAndApplyWebAppUpdate() {
       try {
@@ -2032,7 +2061,7 @@
       if (window.lucide) lucide.createIcons();
 
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js?v=22", { updateViaCache: "none" }).then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=23", { updateViaCache: "none" }).then((reg) => {
           reg.update();
         }).catch(() => {});
       }
