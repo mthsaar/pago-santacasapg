@@ -130,12 +130,15 @@ final class NativeLiquidGlassTabBarView: NSObject, FlutterPlatformView, UITabBar
       tabBar.selectedItem = tabItems.first
     }
 
+    let bottomPadding = ((args as? [String: Any])?["bottomPadding"] as? CGFloat) ?? 34.0
+    let bottomOffset = max(8.0, bottomPadding - 16.0)
+
     containerView.addSubview(tabBar)
     NSLayoutConstraint.activate([
       tabBar.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
       tabBar.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-      tabBar.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-      tabBar.topAnchor.constraint(greaterThanOrEqualTo: containerView.topAnchor)
+      tabBar.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -bottomOffset),
+      tabBar.heightAnchor.constraint(equalToConstant: 62.0)
     ])
 
     channel.setMethodCallHandler { [weak self] call, result in

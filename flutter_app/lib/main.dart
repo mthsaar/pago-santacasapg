@@ -1245,21 +1245,23 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     ];
 
     if (isIOSPlatform) {
-      return SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 68,
-          child: UiKitView(
-            viewType: 'br.com.santacasapg/native_tab_bar',
-            creationParams: <String, dynamic>{'selectedIndex': _currentTab},
-            creationParamsCodec: const StandardMessageCodec(),
-            gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-              Factory<EagerGestureRecognizer>(
-                () => EagerGestureRecognizer(),
-              ),
-            },
-            onPlatformViewCreated: _onNativeTabBarCreated,
-          ),
+      final bottomPadding = MediaQuery.of(context).padding.bottom;
+      final bottomOffset = (bottomPadding - 16).clamp(8.0, 40.0);
+      return SizedBox(
+        height: 64 + bottomOffset,
+        child: UiKitView(
+          viewType: 'br.com.santacasapg/native_tab_bar',
+          creationParams: <String, dynamic>{
+            'selectedIndex': _currentTab,
+            'bottomPadding': bottomPadding,
+          },
+          creationParamsCodec: const StandardMessageCodec(),
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<EagerGestureRecognizer>(
+              () => EagerGestureRecognizer(),
+            ),
+          },
+          onPlatformViewCreated: _onNativeTabBarCreated,
         ),
       );
     }
@@ -3694,13 +3696,60 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     return '$d/$m/$y $hh:$mm';
   }
 
-  void _unlockProntuariosDialog(BuildContext context) {
+  void _showAdaptivePinDialog(
+    BuildContext context, {
+    required String title,
+    required String hint,
+    required String confirmLabel,
+    required VoidCallback onUnlocked,
+  }) {
     final pinCtrl = TextEditingController();
+    void submit(BuildContext dCtx) {
+      if (pinCtrl.text.trim() == svc.editorPin) {
+        onUnlocked();
+        Navigator.pop(dCtx);
+      }
+    }
+
+    if (isIOSPlatform) {
+      showCupertinoDialog(
+        context: context,
+        builder: (dCtx) => CupertinoAlertDialog(
+          title: Text(title),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: CupertinoTextField(
+              controller: pinCtrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              maxLength: 6,
+              placeholder: hint,
+              textAlign: TextAlign.center,
+              onSubmitted: (_) => submit(dCtx),
+            ),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(dCtx),
+              child: const Text('Cancelar'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => submit(dCtx),
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Senha dos Prontuários',
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+        title: Text(title,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
         content: TextField(
           controller: pinCtrl,
           obscureText: true,
@@ -3708,9 +3757,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           textInputAction: TextInputAction.done,
           maxLength: 6,
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-          decoration: const InputDecoration(
-            hintText: 'Digite a senha de 6 dígitos',
-          ),
+          onSubmitted: (_) => submit(dCtx),
+          decoration: InputDecoration(hintText: hint),
         ),
         actions: [
           TextButton(
@@ -3718,16 +3766,21 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: () {
-              if (pinCtrl.text.trim() == svc.editorPin) {
-                setState(() => svc.isProntuariosUnlocked = true);
-                Navigator.pop(dCtx);
-              }
-            },
-            child: const Text('Liberar'),
+            onPressed: () => submit(dCtx),
+            child: Text(confirmLabel),
           ),
         ],
       ),
+    );
+  }
+
+  void _unlockProntuariosDialog(BuildContext context) {
+    _showAdaptivePinDialog(
+      context,
+      title: 'Senha dos Prontuários',
+      hint: 'Digite a senha de 6 dígitos',
+      confirmLabel: 'Liberar',
+      onUnlocked: () => setState(() => svc.isProntuariosUnlocked = true),
     );
   }
 
@@ -4618,27 +4671,30 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
   }
 
   void _confirmDischargeDialog(BuildContext parentCtx, String leito) {
-    showDialog(
+    showAdaptiveDialog(
       context: parentCtx,
-      builder: (dCtx) => AlertDialog(
+      builder: (dCtx) => AlertDialog.adaptive(
         title: const Text(
-          'Confirmar a alta, limpar dados de leito? Essa ação não podera ser desfeita.',
+          'Confirmar alta?',
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
         ),
-        content: Text('Leito $leito'),
+        content: Text(
+            'Limpar os dados do Leito $leito? Essa ação não poderá ser desfeita.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dCtx),
             child: const Text('Cancelar'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: kScRed600),
+          TextButton(
             onPressed: () async {
               await svc.dischargeBed(leito);
               if (dCtx.mounted) Navigator.pop(dCtx);
               if (parentCtx.mounted) Navigator.pop(parentCtx);
             },
-            child: const Text('Confirmar Alta'),
+            child: const Text(
+              'Confirmar Alta',
+              style: TextStyle(color: kScRed600, fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
@@ -4905,43 +4961,19 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       setState(() => svc.isEditorMode = false);
       return;
     }
-    final pinCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (dCtx) => AlertDialog(
-        title: const Text('Modo Editor (6 dígitos)',
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-        content: TextField(
-          controller: pinCtrl,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.done,
-          maxLength: 6,
-          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-          decoration: const InputDecoration(hintText: 'Senha de 6 dígitos'),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dCtx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (pinCtrl.text.trim() == svc.editorPin) {
-                setState(() => svc.isEditorMode = true);
-                Navigator.pop(dCtx);
-              }
-            },
-            child: const Text('Desbloquear'),
-          ),
-        ],
-      ),
+    _showAdaptivePinDialog(
+      context,
+      title: 'Modo Editor (6 dígitos)',
+      hint: 'Senha de 6 dígitos',
+      confirmLabel: 'Desbloquear',
+      onUnlocked: () => setState(() => svc.isEditorMode = true),
     );
   }
 
   void _confirmUndoDialog(BuildContext context) {
-    showDialog(
+    showAdaptiveDialog(
       context: context,
-      builder: (dCtx) => AlertDialog(
+      builder: (dCtx) => AlertDialog.adaptive(
         title: const Text('Deseja desfazer?'),
         content: const Text(
             'A última alteração realizada na escala será revertida.'),
@@ -4949,12 +4981,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           TextButton(
               onPressed: () => Navigator.pop(dCtx),
               child: const Text('Cancelar')),
-          FilledButton(
+          TextButton(
             onPressed: () {
               svc.undoShiftAction();
               Navigator.pop(dCtx);
             },
-            child: const Text('Sim, desfazer'),
+            child: const Text(
+              'Sim, desfazer',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
