@@ -1,10 +1,86 @@
+import 'dart:convert';
+import 'dart:ui' show ImageFilter;
+import 'package:excel/excel.dart' as xl;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'firebase_options.dart';
 import 'models/clinical_models.dart';
 import 'services/maternity_data_service.dart';
+
+bool get isIOSPlatform =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+/// Superfície translúcida estilo iOS Liquid Glass (com fallback Material limpo fora do iOS)
+class LiquidGlassSurface extends StatelessWidget {
+  final Widget child;
+  final BorderRadius borderRadius;
+  final Color? tintColor;
+  final double blurSigma;
+  final EdgeInsetsGeometry? padding;
+  final Color? borderColor;
+  final double borderWidth;
+
+  const LiquidGlassSurface({
+    super.key,
+    required this.child,
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+    this.tintColor,
+    this.blurSigma = 22,
+    this.padding,
+    this.borderColor,
+    this.borderWidth = 1.1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveTint = tintColor ?? Colors.white.withValues(alpha: 0.72);
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: [
+          BoxShadow(
+            color: kBrand950.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  effectiveTint,
+                  effectiveTint.withValues(
+                    alpha: (effectiveTint.a * 0.78).clamp(0.15, 0.92),
+                  ),
+                ],
+              ),
+              border: Border.all(
+                color: borderColor ?? Colors.white.withValues(alpha: 0.85),
+                width: borderWidth,
+              ),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,24 +127,27 @@ class _SantaCasaMaternidadeAppState extends State<SantaCasaMaternidadeApp> {
 
   @override
   Widget build(BuildContext context) {
+    final iosTheme = isIOSPlatform;
     return MaterialApp(
       title: 'Santa Casa PG - Maternidade',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: iosTheme ? const CupertinoScrollBehavior() : null,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: kSurface,
+        scaffoldBackgroundColor: iosTheme ? const Color(0xFFEEF2FB) : kSurface,
         colorScheme: ColorScheme.fromSeed(
           seedColor: kBrand700,
           primary: kBrand700,
           secondary: kScRed600,
           surface: kSurface,
         ),
-        fontFamily: 'Roboto',
+        fontFamily: iosTheme ? '.SF Pro Text' : 'Roboto',
       ),
       home: AnimatedBuilder(
         animation: service,
         builder: (context, _) {
-          if (!service.hasCompletedOnboarding) {
+          // Versão Web não exige login nem notificações
+          if (!kIsWeb && !service.hasCompletedOnboarding) {
             return OnboardingFlowScreen(service: service);
           }
           return HomeShellScreen(service: service);
@@ -658,7 +737,8 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
-      backgroundColor: kSurface,
+      backgroundColor: isIOSPlatform ? const Color(0xFFEEF2FB) : kSurface,
+      extendBody: isIOSPlatform && isMobile && !_isTableFullscreen,
       // Em modo tela cheia NÃO exibe nenhuma barra superior!
       appBar: _isTableFullscreen
           ? null
@@ -667,6 +747,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               child: _buildHeader(context, isMobile),
             ),
       body: SafeArea(
+        bottom: !(isIOSPlatform && isMobile && !_isTableFullscreen),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: _isTableFullscreen ? 0 : (isMobile ? 8 : 20),
@@ -683,264 +764,497 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           ),
         ),
       ),
-      // Floating Action Button para Adicionar Evolução (aba Pacientes) ou Adicionar Médico (aba Médicos)
+      // Floating Action Button: estilo Liquid Glass no iOS e Material no Android/Web
       floatingActionButton: _isTableFullscreen
           ? null
           : (_currentTab == 1
-              ? FloatingActionButton.extended(
-                  backgroundColor: kBrand700,
-                  foregroundColor: Colors.white,
+              ? _buildPlatformFab(
+                  label: 'Adicionar Evolução',
+                  icon: Icons.note_add,
                   onPressed: () => _openEvolutionModal(context, 'PRÉ 1'),
-                  icon: const Icon(Icons.note_add, size: 20),
-                  label: const Text(
-                    'Adicionar Evolução',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-                  ),
                 )
               : (_currentTab == 2 && svc.isEditorMode
-                  ? FloatingActionButton.extended(
-                      backgroundColor: kBrand700,
-                      foregroundColor: Colors.white,
+                  ? _buildPlatformFab(
+                      label: 'Novo Médico',
+                      icon: Icons.person_add,
                       onPressed: () => _openAddOrEditDoctorModal(context, null),
-                      icon: const Icon(Icons.person_add, size: 19),
-                      label: const Text(
-                        'Novo Médico',
-                        style:
-                            TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-                      ),
                     )
                   : null)),
-      // Barra inferior compacta: contorno da aba selecionada afastado do topo e ícone próximo ao texto
+      // Barra inferior: Liquid Glass flutuante no iOS, barra limpa fixa no Android
       bottomNavigationBar: (!isMobile || _isTableFullscreen)
           ? null
-          : Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFD5D7E5))),
-              ),
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 54,
-                  child: Row(
-                    children: [
-                      for (final item in const [
-                        (
-                          idx: 0,
-                          label: 'Escala',
-                          icon: Icons.calendar_month_outlined,
-                          activeIcon: Icons.calendar_month,
-                        ),
-                        (
-                          idx: 1,
-                          label: 'Pacientes',
-                          icon: Icons.bed_outlined,
-                          activeIcon: Icons.bed,
-                        ),
-                        (
-                          idx: 2,
-                          label: 'Médicos',
-                          icon: Icons.people_outline,
-                          activeIcon: Icons.people,
-                        ),
-                        (
-                          idx: 3,
-                          label: 'Fechamento',
-                          icon: Icons.bar_chart_outlined,
-                          activeIcon: Icons.bar_chart,
-                        ),
-                      ])
-                        Expanded(
-                          child: InkWell(
-                            onTap: () =>
-                                setState(() => _currentTab = item.idx),
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 6, bottom: 4),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 14, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: _currentTab == item.idx
-                                          ? kBrand100
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Icon(
-                                      _currentTab == item.idx
-                                          ? item.activeIcon
-                                          : item.icon,
-                                      size: 19,
-                                      color: _currentTab == item.idx
-                                          ? kBrand950
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    item.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      height: 1.05,
-                                      fontWeight: _currentTab == item.idx
-                                          ? FontWeight.w900
-                                          : FontWeight.w700,
-                                      color: _currentTab == item.idx
-                                          ? kBrand950
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          : _buildBottomNavBar(),
     );
   }
 
-  /// Barra superior limpa: apenas o nome do app à esquerda e o switch de
-  /// olho/cadeado no canto direito (sem sino e sem texto "Consulta"/"Editor").
-  Widget _buildHeader(BuildContext context, bool isMobile) {
+  Widget _buildPlatformFab({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    if (!isIOSPlatform) {
+      return FloatingActionButton.extended(
+        backgroundColor: kBrand700,
+        foregroundColor: Colors.white,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: onPressed,
+      child: LiquidGlassSurface(
+        borderRadius: BorderRadius.circular(999),
+        tintColor: kBrand700.withValues(alpha: 0.78),
+        borderColor: Colors.white.withValues(alpha: 0.55),
+        blurSigma: 20,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 19, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavBar() {
+    const items = [
+      (
+        idx: 0,
+        label: 'Escala',
+        icon: Icons.calendar_month_outlined,
+        activeIcon: Icons.calendar_month,
+      ),
+      (
+        idx: 1,
+        label: 'Pacientes',
+        icon: Icons.bed_outlined,
+        activeIcon: Icons.bed,
+      ),
+      (
+        idx: 2,
+        label: 'Médicos',
+        icon: Icons.people_outline,
+        activeIcon: Icons.people,
+      ),
+      (
+        idx: 3,
+        label: 'Fechamento',
+        icon: Icons.bar_chart_outlined,
+        activeIcon: Icons.bar_chart,
+      ),
+    ];
+
+    if (isIOSPlatform) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          child: LiquidGlassSurface(
+            borderRadius: BorderRadius.circular(30),
+            tintColor: Colors.white.withValues(alpha: 0.68),
+            borderColor: Colors.white.withValues(alpha: 0.9),
+            blurSigma: 26,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+            child: SizedBox(
+              height: 52,
+              child: Row(
+                children: [
+                  for (final item in items)
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _currentTab = item.idx),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _currentTab == item.idx
+                                ? Colors.white.withValues(alpha: 0.88)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(24),
+                            border: _currentTab == item.idx
+                                ? Border.all(
+                                    color: Colors.white,
+                                    width: 1,
+                                  )
+                                : null,
+                            boxShadow: _currentTab == item.idx
+                                ? [
+                                    BoxShadow(
+                                      color: kBrand950.withValues(alpha: 0.08),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _currentTab == item.idx
+                                    ? item.activeIcon
+                                    : item.icon,
+                                size: 20,
+                                color: _currentTab == item.idx
+                                    ? kBrand700
+                                    : Colors.black87,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  height: 1.05,
+                                  fontWeight: _currentTab == item.idx
+                                      ? FontWeight.w900
+                                      : FontWeight.w700,
+                                  color: _currentTab == item.idx
+                                      ? kBrand950
+                                      : Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFD5D7E5))),
+        border: Border(top: BorderSide(color: Color(0xFFD5D7E5))),
       ),
       child: SafeArea(
-        bottom: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 10 : 20, vertical: 6),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFD5D7E5)),
-                      color: Colors.white,
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.asset(
-                      'assets/images/logo-header.png',
-                      fit: BoxFit.cover,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, _, _) =>
-                          const Icon(Icons.local_hospital, color: kBrand700, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Santa Casa de Ponta Grossa',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: kBrand950,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          'Maternidade • Escala de Plantão',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: kBrand700,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Switch compacto apenas com Olho / Cadeado no canto direito
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => _handleModeToggle(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: kContainer,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: const Color(0xFFC5C6D4)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+        top: false,
+        child: SizedBox(
+          height: 54,
+          child: Row(
+            children: [
+              for (final item in items)
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _currentTab = item.idx),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6, bottom: 4),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.max,
                         children: [
                           Container(
-                            width: 28,
-                            height: 26,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 3),
                             decoration: BoxDecoration(
-                              color: !svc.isEditorMode
-                                  ? Colors.white
+                              color: _currentTab == item.idx
+                                  ? kBrand100
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Icon(
-                              Icons.visibility,
-                              size: 15,
-                              color:
-                                  !svc.isEditorMode ? kBrand700 : Colors.black45,
+                              _currentTab == item.idx
+                                  ? item.activeIcon
+                                  : item.icon,
+                              size: 19,
+                              color: _currentTab == item.idx
+                                  ? kBrand950
+                                  : Colors.black87,
                             ),
                           ),
-                          Container(
-                            width: 28,
-                            height: 26,
-                            decoration: BoxDecoration(
-                              color: svc.isEditorMode
-                                  ? kScRed600
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Icon(
-                              svc.isEditorMode ? Icons.lock_open : Icons.lock,
-                              size: 14,
-                              color:
-                                  svc.isEditorMode ? Colors.white : Colors.black45,
+                          const SizedBox(height: 2),
+                          Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.05,
+                              fontWeight: _currentTab == item.idx
+                                  ? FontWeight.w900
+                                  : FontWeight.w700,
+                              color: _currentTab == item.idx
+                                  ? kBrand950
+                                  : Colors.black87,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFullscreenToggleButton() {
+    final childContent = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          _isTableFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+          color: Colors.white,
+          size: 16,
+        ),
+        if (_isTableFullscreen) ...[
+          const SizedBox(width: 4),
+          const Text(
+            'Sair',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ],
+    );
+
+    if (isIOSPlatform) {
+      return GestureDetector(
+        onTap: () => setState(() => _isTableFullscreen = !_isTableFullscreen),
+        child: LiquidGlassSurface(
+          borderRadius: BorderRadius.circular(12),
+          tintColor: kBrand950.withValues(alpha: 0.72),
+          borderColor: Colors.white.withValues(alpha: 0.55),
+          blurSigma: 18,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: childContent,
+        ),
+      );
+    }
+
+    return Material(
+      color: kBrand950.withValues(alpha: 0.88),
+      borderRadius: BorderRadius.circular(10),
+      elevation: 3,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _isTableFullscreen = !_isTableFullscreen),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: childContent,
+        ),
+      ),
+    );
+  }
+
+  /// Barra superior limpa: apenas o nome do app à esquerda e o switch de
+  /// olho/cadeado no canto direito (estilo Liquid Glass no iOS).
+  Widget _buildHeader(BuildContext context, bool isMobile) {
+    final ios = isIOSPlatform;
+    final headerContent = SafeArea(
+      bottom: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 10 : 20, vertical: 6),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: ios
+                          ? Colors.white.withValues(alpha: 0.9)
+                          : const Color(0xFFD5D7E5),
+                    ),
+                    color: Colors.white,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/images/logo-header.png',
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (_, _, _) => const Icon(
+                        Icons.local_hospital,
+                        color: kBrand700,
+                        size: 20),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Santa Casa de Ponta Grossa',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: kBrand950,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Maternidade • Escala de Plantão',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: kBrand700,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Switch Olho / Cadeado (Liquid Glass no iOS)
+                GestureDetector(
+                  onTap: () => _handleModeToggle(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: ios
+                          ? Colors.white.withValues(alpha: 0.55)
+                          : kContainer,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: ios
+                            ? Colors.white.withValues(alpha: 0.92)
+                            : const Color(0xFFC5C6D4),
+                      ),
+                      boxShadow: ios
+                          ? [
+                              BoxShadow(
+                                color: kBrand950.withValues(alpha: 0.06),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: 28,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: !svc.isEditorMode
+                                ? Colors.white
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(999),
+                            boxShadow: (!svc.isEditorMode && ios)
+                                ? [
+                                    BoxShadow(
+                                      color: kBrand950.withValues(alpha: 0.1),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Icon(
+                            Icons.visibility,
+                            size: 15,
+                            color:
+                                !svc.isEditorMode ? kBrand700 : Colors.black45,
+                          ),
+                        ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: 28,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: svc.isEditorMode
+                                ? (ios
+                                    ? kScRed600.withValues(alpha: 0.88)
+                                    : kScRed600)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Icon(
+                            svc.isEditorMode ? Icons.lock_open : Icons.lock,
+                            size: 14,
+                            color:
+                                svc.isEditorMode ? Colors.white : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (!isMobile)
+            Container(
+              color: kSurface,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              child: Row(
+                children: [
+                  _buildDesktopTabChip(0, Icons.calendar_month, 'Escala'),
+                  const SizedBox(width: 8),
+                  _buildDesktopTabChip(1, Icons.bed, 'Pacientes'),
+                  const SizedBox(width: 8),
+                  _buildDesktopTabChip(2, Icons.people, 'Médicos'),
+                  const SizedBox(width: 8),
+                  _buildDesktopTabChip(3, Icons.bar_chart, 'Fechamento'),
                 ],
               ),
             ),
-            if (!isMobile)
-              Container(
-                color: kSurface,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                child: Row(
-                  children: [
-                    _buildDesktopTabChip(0, Icons.calendar_month, 'Escala'),
-                    const SizedBox(width: 8),
-                    _buildDesktopTabChip(1, Icons.bed, 'Pacientes'),
-                    const SizedBox(width: 8),
-                    _buildDesktopTabChip(2, Icons.people, 'Médicos'),
-                    const SizedBox(width: 8),
-                    _buildDesktopTabChip(3, Icons.bar_chart, 'Fechamento'),
-                  ],
+        ],
+      ),
+    );
+
+    if (ios) {
+      return ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
-          ],
+            ),
+            child: headerContent,
+          ),
         ),
+      );
+    }
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFD5D7E5))),
       ),
+      child: headerContent,
     );
   }
 
@@ -1140,47 +1454,11 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             ),
           ),
         ),
-        // Botão de Tela Cheia Flutuante Fixo no Canto Superior Direito da Planilha (não se move com as células!)
+        // Botão de Tela Cheia Flutuante Fixo no Canto Superior Direito da Planilha (Liquid Glass no iOS)
         Positioned(
           top: 5,
           right: 6,
-          child: Material(
-            color: kBrand950.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(10),
-            elevation: 3,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () =>
-                  setState(() => _isTableFullscreen = !_isTableFullscreen),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _isTableFullscreen
-                          ? Icons.fullscreen_exit
-                          : Icons.fullscreen,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    if (_isTableFullscreen) ...[
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Sair',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
+          child: _buildFullscreenToggleButton(),
         ),
       ],
     );
@@ -1190,6 +1468,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     }
 
     return ListView(
+      padding: EdgeInsets.only(bottom: isIOSPlatform ? 96 : 16),
       children: [
         // Caixa compacta com Month & Year Picker + Hoje + Navegação de semanas
         Container(
@@ -1836,43 +2115,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         Positioned(
           top: 6,
           right: 6,
-          child: Material(
-            color: kBrand950.withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(10),
-            elevation: 3,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () =>
-                  setState(() => _isTableFullscreen = !_isTableFullscreen),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _isTableFullscreen
-                          ? Icons.fullscreen_exit
-                          : Icons.fullscreen,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    if (_isTableFullscreen) ...[
-                      const SizedBox(width: 4),
-                      const Text(
-                        'Sair',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
+          child: _buildFullscreenToggleButton(),
         ),
       ],
     );
@@ -1888,9 +2131,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            color: isIOSPlatform
+                ? Colors.white.withValues(alpha: 0.78)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(isIOSPlatform ? 18 : 14),
+            border: Border.all(
+              color: isIOSPlatform
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : const Color(0xFFD5D7E5),
+            ),
           ),
           child: Row(
             children: [
@@ -1959,7 +2208,62 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         ),
         const SizedBox(height: 6),
         Expanded(child: maternityTableStack),
+        if (isIOSPlatform) const SizedBox(height: 76),
       ],
+    );
+  }
+
+  Widget _buildDoctorAvatarWidget(DoctorModel doc, {double radius = 20}) {
+    final photo = doc.photoUrl.trim();
+    Widget? imageWidget;
+    if (photo.startsWith('data:image')) {
+      final commaIdx = photo.indexOf(',');
+      if (commaIdx != -1) {
+        try {
+          final bytes = base64Decode(photo.substring(commaIdx + 1));
+          imageWidget = Image.memory(
+            bytes,
+            width: radius * 2,
+            height: radius * 2,
+            fit: BoxFit.cover,
+          );
+        } catch (_) {}
+      }
+    } else if (photo.startsWith('http')) {
+      imageWidget = Image.network(
+        photo,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      );
+    }
+
+    if (imageWidget != null) {
+      return Container(
+        width: radius * 2,
+        height: radius * 2,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: kBrand50,
+          border: Border.all(color: kBrand100, width: 1.5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: imageWidget,
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: kBrand50,
+      child: Text(
+        doc.name.isNotEmpty ? doc.name.characters.first : '?',
+        style: TextStyle(
+          fontWeight: FontWeight.w900,
+          color: kBrand700,
+          fontSize: radius * 0.8,
+        ),
+      ),
     );
   }
 
@@ -1972,106 +2276,148 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       return d.name.toLowerCase().contains(_doctorSearchQuery.toLowerCase());
     }).toList();
 
+    final selectedDoc = !kIsWeb ? svc.currentSelectedDoctor : null;
+
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFD5D7E5)),
+            color: isIOSPlatform
+                ? Colors.white.withValues(alpha: 0.78)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(isIOSPlatform ? 18 : 14),
+            border: Border.all(
+              color: isIOSPlatform
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : const Color(0xFFD5D7E5),
+            ),
           ),
-          child: Column(
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (v) => setState(() => _doctorSearchQuery = v),
-                      decoration: InputDecoration(
-                        hintText: 'Buscar médico (${svc.doctors.length})...',
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        filled: true,
-                        fillColor: kContainerLow,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(999),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
+              Expanded(
+                child: TextField(
+                  onChanged: (v) => setState(() => _doctorSearchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar médico (${svc.doctors.length})...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    filled: true,
+                    fillColor: kContainerLow,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(999),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Sincronizar médicos com a Web',
-                    onPressed: () => svc.syncAllWithCloud(),
-                    icon: const Icon(Icons.sync, color: kBrand700, size: 19),
-                  ),
-                ],
-              ),
-              if (svc.googleUserEmail != null &&
-                  svc.googleUserEmail!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.verified_user,
-                        size: 14, color: kBrand700),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Logado: ${svc.googleUserEmail}',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: kBrand950),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      onPressed: () => svc.signOutFirebase(),
-                      child: const Text(
-                        'Sair / Trocar conta',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: kScRed600),
-                      ),
-                    ),
-                  ],
                 ),
-              ],
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Sincronizar médicos com a Web',
+                onPressed: () => svc.syncAllWithCloud(),
+                icon: const Icon(Icons.sync, color: kBrand700, size: 19),
+              ),
             ],
           ),
         ),
+        // Fora do modo editor: linha com foto, nome do perfil selecionado, ícone de editar próprio perfil e logout
+        if (!svc.isEditorMode && !kIsWeb && selectedDoc != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isIOSPlatform
+                  ? Colors.white.withValues(alpha: 0.76)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(isIOSPlatform ? 18 : 14),
+              border: Border.all(
+                color: isIOSPlatform
+                    ? Colors.white.withValues(alpha: 0.9)
+                    : kBrand100,
+              ),
+            ),
+            child: Row(
+              children: [
+                _buildDoctorAvatarWidget(selectedDoc, radius: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selectedDoc.name,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: kBrand950,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '${selectedDoc.specialty}${selectedDoc.crm.isNotEmpty ? " • CRM ${selectedDoc.crm}" : ""}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black54,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Editar meu perfil e foto',
+                  onPressed: () => _openAddOrEditDoctorModal(
+                    context,
+                    selectedDoc,
+                    isSelfProfile: true,
+                  ),
+                  icon: const Icon(Icons.edit_outlined,
+                      size: 19, color: kBrand700),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Sair / Logout',
+                  onPressed: () => svc.signOutFirebase(),
+                  icon: const Icon(Icons.logout, size: 19, color: kScRed600),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.only(bottom: 72),
+            padding: EdgeInsets.only(bottom: isIOSPlatform ? 96 : 72),
             itemCount: filtered.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, idx) {
               final doc = filtered[idx];
-              final hasChosenProfile =
+              final hasChosenProfile = !kIsWeb &&
                   svc.selectedNotificationDoctorId.isNotEmpty &&
-                      svc.selectedNotificationDoctorId != 'ALL';
+                  svc.selectedNotificationDoctorId != 'ALL';
               final isOwnProfile = hasChosenProfile &&
                   svc.selectedNotificationDoctorId == doc.id;
-              final isNotifying = svc.notificationsEnabled && isOwnProfile;
-              final showNotifAction = !hasChosenProfile || isOwnProfile;
+              final isNotifying =
+                  !kIsWeb && svc.notificationsEnabled && isOwnProfile;
+              final showNotifAction = !kIsWeb && (!hasChosenProfile || isOwnProfile);
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isIOSPlatform
+                      ? Colors.white.withValues(alpha: 0.78)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isNotifying ? kScRed600 : const Color(0xFFD5D7E5),
+                    color: isNotifying
+                        ? kScRed600
+                        : (isIOSPlatform
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : const Color(0xFFD5D7E5)),
                     width: isNotifying ? 2 : 1,
                   ),
                 ),
@@ -2082,18 +2428,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                       children: [
                         InkWell(
                           onTap: () => _openDoctorProfileModal(context, doc),
-                          child: CircleAvatar(
-                            radius: 20,
-                            backgroundColor: kBrand50,
-                            child: Text(
-                              doc.name.characters.first,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: kBrand700,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
+                          child: _buildDoctorAvatarWidget(doc, radius: 20),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -2198,11 +2533,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     );
   }
 
-  /// Modal para Adicionar ou Editar Médico no Corpo Clínico (sincronizado com Firebase)
-  void _openAddOrEditDoctorModal(BuildContext context, DoctorModel? existing) {
+  /// Modal para Adicionar ou Editar Médico (ou o próprio perfil com foto sincronizada via Firebase)
+  void _openAddOrEditDoctorModal(
+    BuildContext context,
+    DoctorModel? existing, {
+    bool isSelfProfile = false,
+  }) {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final crmCtrl = TextEditingController(text: existing?.crm ?? '');
     final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
+    String photoUrl = existing?.photoUrl ?? '';
     String specialty = existing?.specialty ?? 'GO';
     if (!['GO', 'Pediatra', 'Anestesista'].contains(specialty)) {
       specialty = 'GO';
@@ -2211,13 +2551,19 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor:
+          isIOSPlatform ? Colors.white.withValues(alpha: 0.9) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
+            final previewModel = DoctorModel(
+              id: existing?.id ?? '',
+              name: nameCtrl.text.isNotEmpty ? nameCtrl.text : '?',
+              photoUrl: photoUrl,
+            );
             return Padding(
               padding: EdgeInsets.only(
                 left: 18,
@@ -2231,17 +2577,67 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      existing == null
-                          ? 'Novo Médico • Corpo Clínico'
-                          : 'Editar ${existing.name}',
+                      isSelfProfile
+                          ? 'Editar Meu Perfil'
+                          : (existing == null
+                              ? 'Novo Médico • Corpo Clínico'
+                              : 'Editar ${existing.name}'),
                       style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 16,
                           color: kBrand950),
                     ),
                     const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildDoctorAvatarWidget(previewModel, radius: 28),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final picker = ImagePicker();
+                                  final file = await picker.pickImage(
+                                    source: ImageSource.gallery,
+                                    maxWidth: 320,
+                                    maxHeight: 320,
+                                    imageQuality: 75,
+                                  );
+                                  if (file != null) {
+                                    final bytes = await file.readAsBytes();
+                                    setModalState(() {
+                                      photoUrl =
+                                          'data:image/jpeg;base64,${base64Encode(bytes)}';
+                                    });
+                                  }
+                                },
+                                icon: const Icon(Icons.photo_library_outlined,
+                                    size: 16),
+                                label: const Text('Escolher Foto',
+                                    style: TextStyle(fontSize: 12)),
+                              ),
+                              if (photoUrl.isNotEmpty)
+                                TextButton(
+                                  onPressed: () =>
+                                      setModalState(() => photoUrl = ''),
+                                  child: const Text(
+                                    'Remover foto',
+                                    style: TextStyle(
+                                        color: kScRed600, fontSize: 12),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: nameCtrl,
+                      onChanged: (_) => setModalState(() {}),
                       decoration: const InputDecoration(
                         labelText: 'Nome do Profissional *',
                         filled: true,
@@ -2307,7 +2703,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        if (existing != null) ...[
+                        if (existing != null && !isSelfProfile) ...[
                           IconButton(
                             tooltip: 'Excluir médico',
                             onPressed: () async {
@@ -2339,7 +2735,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                 crm: crmCtrl.text.trim(),
                                 phone: phoneCtrl.text.trim(),
                                 specialty: specialty,
-                                photoUrl: existing?.photoUrl ?? '',
+                                photoUrl: photoUrl,
                                 linkedGoogleEmail:
                                     existing?.linkedGoogleEmail ?? '',
                                 linkedGoogleName:
@@ -2373,11 +2769,16 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     required VoidCallback onToggle,
     required Widget expandedContent,
   }) {
+    final ios = isIOSPlatform;
     return Material(
-      color: Colors.white,
+      color: ios ? Colors.white.withValues(alpha: 0.78) : Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFD5D7E5)),
+        borderRadius: BorderRadius.circular(ios ? 20 : 16),
+        side: BorderSide(
+          color: ios
+              ? Colors.white.withValues(alpha: 0.92)
+              : const Color(0xFFD5D7E5),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -2474,7 +2875,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
     }).toList();
 
     return ListView(
-      padding: const EdgeInsets.only(top: 2, bottom: 16),
+      padding: EdgeInsets.only(top: 2, bottom: isIOSPlatform ? 96 : 16),
       children: [
         // Título diferenciado próximo à barra superior com seletor de mês
         Padding(
@@ -2545,7 +2946,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         // 1. Fechamento dos Profissionais (Horas)
         _buildClosingSectionCard(
-          icon: Icons.medical_services,
+          icon: Icons.groups_rounded,
           iconColor: kBrand700,
           iconBgColor: kBrand50,
           title: 'Fechamento dos Profissionais',
@@ -2627,9 +3028,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         // 2. Indicadores Mensais de Pacientes
         _buildClosingSectionCard(
-          icon: Icons.analytics,
-          iconColor: kScRed600,
-          iconBgColor: kScRed50,
+          icon: Icons.bar_chart_rounded,
+          iconColor: kBrand700,
+          iconBgColor: kBrand50,
           title: 'Indicadores Mensais de Pacientes',
           subtitle:
               '${occupiedBeds.length} internadas • $occupancyPct% de ocupação',
@@ -2667,7 +3068,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
 
         // 3. PRONTUÁRIOS (Cadastrados por Nome, com Data de Inserção e de Alta, Protegido por Senha)
         _buildClosingSectionCard(
-          icon: svc.isProntuariosUnlocked ? Icons.folder_shared : Icons.lock,
+          icon: svc.isProntuariosUnlocked
+              ? Icons.folder_shared_rounded
+              : Icons.folder_rounded,
           iconColor: kBrand700,
           iconBgColor: kBrand50,
           title: 'Prontuários (${svc.allMedicalRecordsSorted.length} pacientes)',
@@ -2723,6 +3126,26 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                                             BorderRadius.circular(999),
                                         borderSide: BorderSide.none,
                                       ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.green.shade700,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 8),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () =>
+                                      _exportProntuariosToExcel(context),
+                                  icon: const Icon(Icons.table_view_rounded,
+                                      size: 16),
+                                  label: const Text(
+                                    'Excel',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ),
@@ -2832,6 +3255,75 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _exportProntuariosToExcel(BuildContext context) async {
+    if (!svc.isProntuariosUnlocked) return;
+    final records = svc.allMedicalRecordsSorted;
+    final workbook = xl.Excel.createExcel();
+    final sheet = workbook['Prontuarios'];
+    workbook.delete('Sheet1');
+
+    sheet.appendRow([
+      xl.TextCellValue('Nome da Paciente'),
+      xl.TextCellValue('Status'),
+      xl.TextCellValue('Leito'),
+      xl.TextCellValue('Data de Inserção'),
+      xl.TextCellValue('Data de Alta'),
+      xl.TextCellValue('Paridade'),
+      xl.TextCellValue('Tipo Sanguíneo'),
+      xl.TextCellValue('Alto Risco'),
+      xl.TextCellValue('Internação por'),
+      xl.TextCellValue('Observações'),
+    ]);
+
+    for (final rec in records) {
+      sheet.appendRow([
+        xl.TextCellValue(rec.nome),
+        xl.TextCellValue(rec.isDischarged ? 'Alta Hospitalar' : 'Internada'),
+        xl.TextCellValue(rec.leito),
+        xl.TextCellValue(_formatIsoDateTime(rec.admittedAt)),
+        xl.TextCellValue(rec.dischargedAt.isNotEmpty
+            ? _formatIsoDateTime(rec.dischargedAt)
+            : 'Em internação'),
+        xl.TextCellValue(rec.paridade),
+        xl.TextCellValue(rec.tipoSanguineo),
+        xl.TextCellValue(rec.altoRisco),
+        xl.TextCellValue(rec.internacaoPor),
+        xl.TextCellValue(rec.observacoes),
+      ]);
+    }
+
+    final bytes = workbook.encode();
+    if (bytes == null) return;
+
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final fileName = 'Prontuarios_SantaCasaPG_$stamp.xlsx';
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            Uint8List.fromList(bytes),
+            name: fileName,
+            mimeType:
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          ),
+        ],
+        subject: 'Prontuários Maternidade Santa Casa PG',
+      ),
+    );
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Planilha Excel gerada (${records.length} prontuários).'),
+        ),
+      );
+    }
   }
 
   String _formatIsoDateTime(String iso) {
@@ -3910,13 +4402,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            final hasChosenProfile =
+            final hasChosenProfile = !kIsWeb &&
                 svc.selectedNotificationDoctorId.isNotEmpty &&
-                    svc.selectedNotificationDoctorId != 'ALL';
+                svc.selectedNotificationDoctorId != 'ALL';
             final isOwnProfile = hasChosenProfile &&
                 svc.selectedNotificationDoctorId == doc.id;
-            final isNotifying = svc.notificationsEnabled && isOwnProfile;
-            final canOfferNotif = !hasChosenProfile || isOwnProfile;
+            final isNotifying =
+                !kIsWeb && svc.notificationsEnabled && isOwnProfile;
+            final canOfferNotif =
+                !kIsWeb && (!hasChosenProfile || isOwnProfile);
             return Padding(
               padding: EdgeInsets.only(
                 left: 18,
@@ -3931,17 +4425,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundColor: kBrand50,
-                          child: Text(
-                            doc.name.characters.first,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 18,
-                                color: kBrand700),
-                          ),
-                        ),
+                        _buildDoctorAvatarWidget(doc, radius: 24),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(

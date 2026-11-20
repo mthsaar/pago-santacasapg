@@ -49,6 +49,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para selecionar a foto do perfil do profissional no Corpo Clínico.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Para capturar a foto do perfil do profissional no Corpo Clínico.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

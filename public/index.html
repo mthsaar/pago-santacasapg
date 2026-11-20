@@ -322,21 +322,13 @@
           </div>
         </div>
 
-        <!-- Ações à direita: Tela Cheia (Mobile) + Lembretes de Plantão (1h antes) + Botão único de Download -->
+        <!-- Ações à direita: Tela Cheia (Mobile) + Botão único de Download (Notificações desativadas na versão Web) -->
         <div class="flex items-center gap-1.5 ml-auto shrink-0">
           <!-- Botão Ver Tabela em Tela Cheia (Mobile) -->
           <button type="button" onclick="app.toggleTableFullscreen('escala-week-wrapper')"
                   title="Ver tabela da escala em tela cheia"
                   class="md:hidden flex items-center justify-center w-8 h-8 rounded-full bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
             <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-brand-800"></i>
-          </button>
-
-          <button type="button" onclick="app.openShiftReminderModal()"
-                  title="Aviso automático WhatsApp / SMS 1h antes do plantão"
-                  class="relative flex items-center justify-center gap-1.5 w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-full text-xs font-extrabold bg-m3-containerLow hover:bg-brand-100 text-brand-950 border border-m3-outlineVariant/60 transition">
-            <i data-lucide="bell-ring" class="w-3.5 h-3.5 text-scred-600 shrink-0"></i>
-            <span class="hidden sm:inline">Aviso 1h</span>
-            <span id="reminder-active-dot" class="hidden absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-scred-600 ring-2 ring-white"></span>
           </button>
 
           <button type="button" onclick="app.openDownloadMonthModal()"
@@ -639,8 +631,8 @@
         <div onclick="app.toggleStatsSection('professionals')"
              class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
-              <i data-lucide="users" class="w-4 h-4"></i>
+            <div class="w-10 h-10 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+              <i data-lucide="users" class="w-5 h-5"></i>
             </div>
             <div>
               <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Fechamento dos Profissionais</h3>
@@ -702,8 +694,8 @@
         <div onclick="app.toggleStatsSection('patients')"
              class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center shrink-0">
-              <i data-lucide="heart-pulse" class="w-4 h-4"></i>
+            <div class="w-10 h-10 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+              <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
             </div>
             <div>
               <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Fechamento de Pacientes • Indicadores da Maternidade</h3>
@@ -731,8 +723,8 @@
         <div onclick="app.toggleStatsSection('prontuarios')"
              class="px-4 py-3.5 bg-m3-containerLow/70 hover:bg-m3-container/80 border-b border-m3-outlineVariant/50 flex items-center justify-between gap-3 cursor-pointer select-none transition">
           <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-2xl bg-brand-100 text-brand-800 flex items-center justify-center shrink-0">
-              <i data-lucide="folder-lock" class="w-4 h-4"></i>
+            <div class="w-10 h-10 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+              <i data-lucide="folder-lock" class="w-5 h-5"></i>
             </div>
             <div>
               <h3 class="text-sm sm:text-base font-extrabold text-brand-950 leading-tight">Prontuários • Histórico Nominal de Pacientes</h3>
@@ -810,35 +802,6 @@
             <h4 class="text-xs font-extrabold text-brand-950">Plantão Selecionado</h4>
             <p id="profile-modal-shift-text" class="text-xs text-brand-800 font-semibold mt-0.5"></p>
           </div>
-        </div>
-
-        <!-- Opção de receber notificações deste profissional via WebApp -->
-        <div class="rounded-2xl bg-scred-50/60 border-2 border-scred-200 p-3.5 space-y-2.5">
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <div class="w-8 h-8 rounded-xl bg-scred-600 text-white flex items-center justify-center shrink-0">
-                <i data-lucide="bell-ring" class="w-4 h-4"></i>
-              </div>
-              <div class="min-w-0">
-                <h4 class="text-xs font-extrabold text-brand-950 leading-tight">Notificações no WebApp</h4>
-                <p id="profile-modal-notify-subtitle" class="text-[11px] text-slate-600 leading-tight mt-0.5">
-                  Receba alertas de plantão (1h antes) e evoluções deste profissional
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <button type="button" id="profile-modal-btn-notify" onclick="app.toggleProfileDoctorNotifications()"
-                  class="w-full h-11 min-h-[44px] px-4 rounded-xl bg-scred-600 hover:bg-scred-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition whitespace-nowrap">
-            <i data-lucide="bell-plus" class="w-4 h-4 shrink-0"></i>
-            <span id="profile-modal-btn-notify-label">Receber notificações deste profissional</span>
-          </button>
-
-          <button type="button" id="profile-modal-btn-install-pwa" onclick="app.openInstallPwaModal()"
-                  class="w-full h-10 min-h-[40px] px-3 rounded-xl bg-white hover:bg-brand-50 text-brand-900 border border-brand-200 font-extrabold text-xs flex items-center justify-center gap-1.5 transition whitespace-nowrap">
-            <i data-lucide="smartphone" class="w-3.5 h-3.5 text-brand-700 shrink-0"></i>
-            <span>Salvar WebApp na Tela de Início</span>
-          </button>
         </div>
 
         <div>

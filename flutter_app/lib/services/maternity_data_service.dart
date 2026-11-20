@@ -184,8 +184,26 @@ class MaternityDataService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Solicita permissão nativa de notificações ao Android (API 33+) e iOS
+  DoctorModel? get currentSelectedDoctor {
+    if (selectedNotificationDoctorId.isEmpty ||
+        selectedNotificationDoctorId == 'ALL') {
+      return null;
+    }
+    for (final d in doctors) {
+      if (d.id == selectedNotificationDoctorId) return d;
+    }
+    return null;
+  }
+
+  /// Solicita permissão nativa de notificações ao Android (API 33+) e iOS (desativado na Web)
   Future<void> requestNativeNotificationPermission({DoctorModel? doctor}) async {
+    if (kIsWeb) {
+      notificationsEnabled = false;
+      notifyOneHourBeforeShift = false;
+      notifyClinicalReminders = false;
+      notifyListeners();
+      return;
+    }
     notificationsEnabled = true;
     notifyOneHourBeforeShift = true;
     notifyClinicalReminders = true;
@@ -203,7 +221,7 @@ class MaternityDataService extends ChangeNotifier {
   }
 
   Future<void> triggerNativeNotification(String title, String body) async {
-    if (!notificationsEnabled) return;
+    if (kIsWeb || !notificationsEnabled) return;
     try {
       await _notifChannel.invokeMethod('showNotification', {
         'title': title,
@@ -1004,12 +1022,20 @@ class MaternityDataService extends ChangeNotifier {
     if (firebaseAuthInitialized) return;
     firebaseAuthInitialized = true;
 
+    // Desativa login e notificações na versão Web
+    if (kIsWeb) {
+      hasCompletedOnboarding = true;
+      notificationsEnabled = false;
+      notifyOneHourBeforeShift = false;
+      notifyClinicalReminders = false;
+      notifyListeners();
+      return;
+    }
+
     try {
-      if (!kIsWeb) {
-        await GoogleSignIn.instance.initialize(
-          serverClientId: kGoogleWebClientId,
-        );
-      }
+      await GoogleSignIn.instance.initialize(
+        serverClientId: kGoogleWebClientId,
+      );
 
       final current = FirebaseAuth.instance.currentUser;
       if (current != null) {

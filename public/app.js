@@ -132,12 +132,9 @@ const app = {
     this.updateReminderActiveDot();
 
     await this.initFirebase();
-    this.initGoogleAuthListener();
     this.updateOpenSheetButtonLink();
     await this.loadAllData();
     this.syncMaternityFromGoogleSheet();
-    this.checkAndTriggerOneHourShiftReminders();
-    this.checkClinicalReminders();
 
     this.switchView(this.state.currentView);
 
@@ -172,12 +169,7 @@ const app = {
 
     setInterval(() => {
       this.loadNowStatus();
-      this.checkAndTriggerOneHourShiftReminders();
     }, 60000);
-
-    setInterval(() => {
-      this.checkClinicalReminders();
-    }, 20000);
 
     setInterval(() => {
       this.syncMaternityFromGoogleSheet();
@@ -2532,57 +2524,12 @@ const app = {
   },
 
   openShiftReminderModal() {
-    const modal = document.getElementById('modal-shift-reminders');
-    const enabledEl = document.getElementById('reminder-auto-enabled');
-    const myDocSelect = document.getElementById('reminder-my-doctor-select');
-    const optShift1h = document.getElementById('reminder-opt-shift-1h');
-    const optClinical = document.getElementById('reminder-opt-clinical');
-
-    const cfg = this.state.shiftReminderConfig || {};
-    if (enabledEl) enabledEl.checked = cfg.enabled !== false;
-    if (optShift1h) optShift1h.checked = cfg.notify_shift_1h !== false;
-    if (optClinical) optClinical.checked = cfg.notify_clinical !== false;
-
-    if (myDocSelect) {
-      const sortedDocs = [...(this.state.doctors || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      const curEmail = (this.state.googleUser && this.state.googleUser.email || '').toLowerCase();
-      myDocSelect.innerHTML = `<option value="ALL">Todos os plantonistas (Sem filtro individual)</option>` +
-        sortedDocs.map(d => {
-          const linkedEmail = String(d.linked_google_email || '').toLowerCase();
-          const isLockedByOther = linkedEmail && linkedEmail !== curEmail;
-          const suffix = isLockedByOther ? ' 🔒 (Vinculado a outra conta)' : (linkedEmail && linkedEmail === curEmail ? ' ✓ (Sua Conta Google)' : '');
-          return `<option value="${d.id}">${this.escapeHtml(d.name)}${suffix}</option>`;
-        }).join('');
-      myDocSelect.value = cfg.my_doctor_id || 'ALL';
-    }
-
-    this.updateGoogleAuthBoxUI();
-    this.updatePwaInstallButtonsVisibility();
-    this.updateDeviceNotificationButtonUI();
-    this.renderShiftReminderModal();
-    if (modal) modal.classList.remove('hidden');
-    if (window.lucide) lucide.createIcons();
+    this.showToast('Notificações e login estão desativados na versão Web. Utilize o app Android ou iOS.', 'info');
   },
 
-  // ================= LOGIN GOOGLE + DUPLO CHEQUE DE SEGURANÇA DO PLANTONISTA =================
+  // ================= LOGIN GOOGLE + DUPLO CHEQUE (DESATIVADO NA VERSÃO WEB) =================
   initGoogleAuthListener() {
-    if (window.firebase && firebase.auth) {
-      try {
-        firebase.auth().onAuthStateChanged(user => {
-          if (user) {
-            this.state.googleUser = {
-              uid: user.uid,
-              name: user.displayName || user.email || 'Médico(a)',
-              email: (user.email || '').toLowerCase(),
-              photoURL: user.photoURL || ''
-            };
-            localStorage.setItem('scpg_google_auth_user', JSON.stringify(this.state.googleUser));
-          }
-          this.updateGoogleAuthBoxUI();
-        });
-      } catch (e) {}
-    }
-    this.updateGoogleAuthBoxUI();
+    this.state.googleUser = null;
   },
 
   updateGoogleAuthBoxUI() {
@@ -2618,39 +2565,7 @@ const app = {
   },
 
   async signInWithGoogleForNotifications(fromDoubleCheckModal = false) {
-    if (window.firebase && firebase.auth) {
-      try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: 'select_account' });
-        const result = await firebase.auth().signInWithPopup(provider);
-        if (result && result.user) {
-          this.state.googleUser = {
-            uid: result.user.uid,
-            name: result.user.displayName || result.user.email || 'Médico(a)',
-            email: (result.user.email || '').toLowerCase(),
-            photoURL: result.user.photoURL || ''
-          };
-          localStorage.setItem('scpg_google_auth_user', JSON.stringify(this.state.googleUser));
-          this.updateGoogleAuthBoxUI();
-          this.showToast(`Autenticado com Google: ${this.state.googleUser.email}`, 'success');
-          if (fromDoubleCheckModal && this.state.pendingDoubleCheckDoctorId) {
-            this.openDoctorDoubleCheckModal(this.state.pendingDoubleCheckDoctorId);
-          }
-          return;
-        }
-      } catch (err) {
-        console.warn('Popup Google Auth indisponível neste navegador, usando identificação no modal:', err);
-      }
-    }
-
-    if (!fromDoubleCheckModal) {
-      const targetDocId = (this.state.shiftReminderConfig && this.state.shiftReminderConfig.my_doctor_id !== 'ALL')
-        ? this.state.shiftReminderConfig.my_doctor_id
-        : (this.state.doctors[0] && this.state.doctors[0].id);
-      if (targetDocId) {
-        this.openDoctorDoubleCheckModal(targetDocId);
-      }
-    }
+    this.showToast('Login e notificações estão disponíveis apenas no app mobile (Android/iOS).', 'info');
   },
 
   async signOutGoogleForNotifications() {
@@ -2912,26 +2827,7 @@ const app = {
   },
 
   async requestDeviceNotificationPermission() {
-    this.playClinicalAlertChime();
-    if (!('Notification' in window)) {
-      this.showToast('Alertas internos e sonoros ativados no WebApp!', 'success');
-      return;
-    }
-    try {
-      const perm = await Notification.requestPermission();
-      this.updateDeviceNotificationButtonUI();
-      if (perm === 'granted') {
-        this.triggerNativeDeviceNotification(
-          'Santa Casa PG • Notificações Ativas',
-          'Você receberá os alertas dos seus plantões e evoluções neste aparelho.'
-        );
-        this.showToast('Notificações do aparelho ativadas com sucesso!', 'success');
-      } else {
-        this.showToast('Alerta interno do WebApp ativo!', 'info');
-      }
-    } catch (e) {
-      this.showToast('Alerta interno e sonoro do WebApp ativo!', 'info');
-    }
+    // Notificações desativadas na versão Web
   },
 
   playClinicalAlertChime() {
@@ -2964,23 +2860,7 @@ const app = {
   },
 
   async triggerNativeDeviceNotification(title, body) {
-    this.playClinicalAlertChime();
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    try {
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg && reg.showNotification) {
-          await reg.showNotification(title, {
-            body,
-            icon: '/icon-192.png',
-            badge: '/icon-192.png',
-            vibrate: [200, 100, 200]
-          });
-          return;
-        }
-      }
-      new Notification(title, { body, icon: '/icon-192.png' });
-    } catch (e) {}
+    // Notificações desativadas na versão Web
   },
 
   testInAppDeviceNotification() {
@@ -4340,16 +4220,12 @@ const app = {
       filtered = filtered.filter(d => d.name && d.name.toLowerCase().includes(q));
     }
 
-    const cfg = this.state.shiftReminderConfig || {};
-    const activeNotifyDocId = cfg.enabled !== false ? String(cfg.my_doctor_id || '') : '';
-
     grid.innerHTML = filtered.map(doc => {
       const phoneDisplay = doc.phone && doc.phone.trim() !== '' ? doc.phone : 'Não cadastrado';
       const hasPhone = Boolean(doc.phone && doc.phone.trim() !== '');
-      const isReceivingNotif = activeNotifyDocId === String(doc.id);
 
       return `
-        <div class="m3-card m3-card-interactive p-5 flex flex-col justify-between ${isReceivingNotif ? 'ring-2 ring-scred-500' : ''}">
+        <div class="m3-card m3-card-interactive p-5 flex flex-col justify-between">
           <div>
             <div class="flex items-center gap-3.5 mb-3 cursor-pointer" onclick="app.openDoctorProfileById('${doc.id}')">
               <div class="w-16 h-16 rounded-2xl overflow-hidden border-2 border-brand-100 shadow-xs bg-brand-50 shrink-0 flex items-center justify-center">
@@ -4360,7 +4236,6 @@ const app = {
                   <h4 class="font-extrabold text-brand-950 text-base leading-snug truncate hover:text-brand-700">
                     ${doc.name}
                   </h4>
-                  ${isReceivingNotif ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-scred-600 text-white whitespace-nowrap">🔔 Notificando</span>` : ''}
                 </div>
                 <p class="text-xs text-slate-400 font-medium">${doc.crm ? `CRM ${doc.crm}` : 'CRM não cadastrado'}</p>
                 <span class="inline-block mt-1 text-[11px] font-bold text-brand-800 bg-brand-100 px-2.5 py-0.5 rounded-full">
@@ -4376,12 +4251,6 @@ const app = {
           </div>
 
           <div class="space-y-2 pt-1">
-            <button type="button" onclick="app.openDoctorProfileById('${doc.id}')"
-                    class="w-full py-2 px-3 rounded-xl ${isReceivingNotif ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200'} text-xs font-extrabold flex items-center justify-center gap-1.5 transition">
-              <i data-lucide="${isReceivingNotif ? 'bell-ring' : 'bell-plus'}" class="w-3.5 h-3.5 shrink-0"></i>
-              <span>${isReceivingNotif ? 'Recebendo notificações ✓' : 'Receber notificações'}</span>
-            </button>
-
             <div class="flex items-center gap-2">
               ${hasPhone ? `
                 <a href="tel:${this.cleanPhone(doc.phone)}" 
@@ -5088,11 +4957,18 @@ const app = {
                    placeholder="Buscar prontuário por nome da paciente, leito ou motivo..."
                    class="w-full pl-9 pr-4 py-2 bg-m3-containerLow border border-m3-outlineVariant rounded-full text-xs font-semibold text-brand-950 focus:ring-2 focus:ring-brand-600 focus:outline-none">
           </div>
-          <button type="button" onclick="app.lockProntuariosSection()"
-                  class="px-3.5 py-2 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 text-xs font-extrabold flex items-center gap-1.5 transition">
-            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-            <span>Bloquear Prontuários</span>
-          </button>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="app.exportProntuariosExcel()"
+                    class="px-3.5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-xs transition">
+              <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+              <span>Exportar Excel</span>
+            </button>
+            <button type="button" onclick="app.lockProntuariosSection()"
+                    class="px-3.5 py-2 rounded-full bg-scred-50 hover:bg-scred-100 text-scred-700 border border-scred-200 text-xs font-extrabold flex items-center gap-1.5 transition">
+              <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+              <span>Bloquear Prontuários</span>
+            </button>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -5129,6 +5005,48 @@ const app = {
       </div>
     `;
     if (window.lucide) lucide.createIcons();
+  },
+
+  exportProntuariosExcel() {
+    if (!this.state.prontuariosUnlocked) {
+      this.showToast('Desbloqueie os prontuários antes de exportar.', 'warning');
+      return;
+    }
+
+    const allList = [...(this.state.lastProntuariosList || [])].filter(p => p && (p.nome || p.internacao_por));
+    allList.sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+
+    const rows = allList.map(rec => {
+      const isDischarged = rec.status === 'discharged' || Boolean(rec.discharged_at);
+      return {
+        'Nome da Paciente': rec.nome || 'Paciente sem nome informado',
+        'Status': isDischarged ? 'Alta Hospitalar' : 'Internada',
+        'Leito': rec.leito || '—',
+        'Data de Inserção': this.formatProntuarioDateTime(rec.admitted_at),
+        'Data de Alta': rec.discharged_at ? this.formatProntuarioDateTime(rec.discharged_at) : 'Em internação',
+        'Paridade': rec.paridade || '—',
+        'Tipo Sanguíneo': rec.tipo_sanguineo || '—',
+        'Alto Risco': rec.alto_risco || '—',
+        'Internação por': rec.internacao_por || '—',
+        'Observações': rec.observacoes || ''
+      };
+    });
+
+    if (typeof window.XLSX === 'undefined') {
+      this.showToast('Biblioteca Excel não carregada. Recarregue a página.', 'error');
+      return;
+    }
+
+    const wb = window.XLSX.utils.book_new();
+    const ws = window.XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 32 }, { wch: 16 }, { wch: 10 }, { wch: 22 }, { wch: 22 },
+      { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 36 }
+    ];
+    window.XLSX.utils.book_append_sheet(wb, ws, 'Prontuarios');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    window.XLSX.writeFile(wb, `Prontuarios_Maternidade_SantaCasaPG_${dateStamp}.xlsx`);
+    this.showToast(`Excel exportado (${rows.length} prontuários).`, 'success');
   },
 
   exportStatsCSV() {
@@ -5396,10 +5314,35 @@ const app = {
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target.result;
-      const urlInput = document.getElementById('doc-photo-url');
-      if (urlInput) urlInput.value = dataUrl;
-      this.updatePhotoPreview(dataUrl);
+      const rawDataUrl = e.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 320;
+        let w = img.width || maxSide;
+        let h = img.height || maxSide;
+        if (w > h && w > maxSide) {
+          h = Math.round((h * maxSide) / w);
+          w = maxSide;
+        } else if (h >= w && h > maxSide) {
+          w = Math.round((w * maxSide) / h);
+          h = maxSide;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressedUrl = canvas.toDataURL('image/jpeg', 0.78);
+        const urlInput = document.getElementById('doc-photo-url');
+        if (urlInput) urlInput.value = compressedUrl;
+        this.updatePhotoPreview(compressedUrl);
+      };
+      img.onerror = () => {
+        const urlInput = document.getElementById('doc-photo-url');
+        if (urlInput) urlInput.value = rawDataUrl;
+        this.updatePhotoPreview(rawDataUrl);
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   },
