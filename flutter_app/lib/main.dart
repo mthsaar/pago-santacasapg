@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
@@ -696,7 +697,7 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                     style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
                   ),
                 )
-              : (_currentTab == 2
+              : (_currentTab == 2 && svc.isEditorMode
                   ? FloatingActionButton.extended(
                       backgroundColor: kBrand700,
                       foregroundColor: Colors.white,
@@ -1134,87 +1135,112 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFD5D7E5)),
           ),
-          child: Row(
-            children: [
-              // Month & Year Picker Clicável
-              InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: () => _openMonthYearPickerDialog(context),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: kContainerLow,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFD5D7E5)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        svc.formatMonthYearPt(svc.currentMonth),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: kBrand950,
+          child: LayoutBuilder(
+            builder: (context, constraints) => FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Month & Year Picker Clicável
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _openMonthYearPickerDialog(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: kContainerLow,
+                              borderRadius: BorderRadius.circular(10),
+                              border:
+                                  Border.all(color: const Color(0xFFD5D7E5)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  svc.formatMonthYearPt(svc.currentMonth),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    color: kBrand950,
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
+                                const Icon(Icons.arrow_drop_down,
+                                    size: 18, color: kBrand700),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(Icons.arrow_drop_down,
-                          size: 18, color: kBrand700),
-                    ],
-                  ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: () => svc.jumpToToday(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: kBrand50,
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: kBrand100),
+                            ),
+                            child: const Text(
+                              'Hoje',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  color: kBrand700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 6),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 26, minHeight: 26),
+                          onPressed: wkIdx > 0
+                              ? () =>
+                                  setState(() => svc.currentWeekIndex = wkIdx - 1)
+                              : null,
+                          icon: const Icon(Icons.chevron_left, size: 19),
+                        ),
+                        Text(
+                          rangeLabel,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                            color: kBrand950,
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 26, minHeight: 26),
+                          onPressed: wkIdx < weeks.length - 1
+                              ? () =>
+                                  setState(() => svc.currentWeekIndex = wkIdx + 1)
+                              : null,
+                          icon: const Icon(Icons.chevron_right, size: 19),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () => svc.jumpToToday(),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: kBrand50,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: kBrand100),
-                  ),
-                  child: const Text(
-                    'Hoje',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                        color: kBrand700),
-                  ),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                onPressed: wkIdx > 0
-                    ? () => setState(() => svc.currentWeekIndex = wkIdx - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left, size: 19),
-              ),
-              Text(
-                rangeLabel,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                  color: kBrand950,
-                ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                onPressed: wkIdx < weeks.length - 1
-                    ? () => setState(() => svc.currentWeekIndex = wkIdx + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right, size: 19),
-              ),
-            ],
+            ),
           ),
         ),
 
@@ -2052,14 +2078,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             ),
                           ),
                         ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Editar Médico',
-                          onPressed: () =>
-                              _openAddOrEditDoctorModal(context, doc),
-                          icon: const Icon(Icons.edit_outlined,
-                              size: 18, color: kBrand700),
-                        ),
+                        if (svc.isEditorMode)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Editar Médico',
+                            onPressed: () =>
+                                _openAddOrEditDoctorModal(context, doc),
+                            icon: const Icon(Icons.edit_outlined,
+                                size: 18, color: kBrand700),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -2808,6 +2835,184 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
               activeParityLetter = null;
             }
 
+            DateTime parseIsoDateOrNow(String iso) {
+              final parts = iso.trim().split('-');
+              if (parts.length == 3) {
+                final y = int.tryParse(parts[0]);
+                final m = int.tryParse(parts[1]);
+                final d = int.tryParse(parts[2]);
+                if (y != null && m != null && d != null) {
+                  return DateTime(y, m, d);
+                }
+              }
+              return DateTime.now();
+            }
+
+            TimeOfDay parseTimeOrDefault(String hhmm,
+                {int fallbackHour = 12}) {
+              final parts = hhmm.trim().split(':');
+              if (parts.length == 2) {
+                final h = int.tryParse(parts[0]);
+                final m = int.tryParse(parts[1]);
+                if (h != null && m != null && h >= 0 && h < 24 && m >= 0 && m < 60) {
+                  return TimeOfDay(hour: h, minute: m);
+                }
+              }
+              return TimeOfDay(hour: fallbackHour, minute: 0);
+            }
+
+            String formatIsoDateBr(String iso) {
+              final parts = iso.trim().split('-');
+              if (parts.length == 3) {
+                return '${parts[2].padLeft(2, '0')}/${parts[1].padLeft(2, '0')}/${parts[0]}';
+              }
+              return 'Selecionar data';
+            }
+
+            Widget buildPreviewBox(String rawValue,
+                {String emptyText = 'Nenhum dado preenchido'}) {
+              final text = rawValue.trim();
+              return Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFD5D7E5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'PRÉ-VISUALIZAÇÃO NA PLANILHA',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.4,
+                        color: Colors.black45,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      text.isNotEmpty ? text : emptyText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: text.isNotEmpty ? kBrand950 : Colors.black38,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            Widget buildNativePickerTile({
+              required IconData icon,
+              required String label,
+              required String valueText,
+              required VoidCallback onTap,
+            }) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onTap,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFC5C6D4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(icon, size: 18, color: kBrand700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black54,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              valueText,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: kBrand950,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.expand_more,
+                          size: 18, color: Colors.black45),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            Widget buildParityTile(String letter) {
+              final v = parsedParity.values[letter] ?? 0;
+              final isOpen = activeParityLetter == letter;
+              return Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setModalState(() {
+                    activeParityLetter = isOpen ? null : letter;
+                  }),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isOpen
+                          ? kBrand100
+                          : (v > 0 ? kBrand50 : Colors.white),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isOpen || v > 0
+                            ? kBrand700
+                            : const Color(0xFFC5C6D4),
+                        width: isOpen || v > 0 ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$letter ▾',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13,
+                            color: kBrand950,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          v == 0 ? '0' : '$letter$v',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                            color: v > 0 ? kBrand700 : Colors.black38,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
             return DraggableScrollableSheet(
               expand: false,
               initialChildSize: 0.9,
@@ -2937,110 +3142,123 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                          // Grade 2x3 igual ao WebApp para toque fácil no celular
+                          Row(
                             children: [
-                              for (final letter in ParsedParity.letters)
-                                Builder(builder: (context) {
-                                  final v = parsedParity.values[letter] ?? 0;
-                                  final isOpen = activeParityLetter == letter;
-                                  return InkWell(
-                                    onTap: () => setModalState(() {
-                                      activeParityLetter =
-                                          isOpen ? null : letter;
-                                    }),
-                                    child: Container(
-                                      width: 88,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 7),
-                                      decoration: BoxDecoration(
-                                        color: v > 0 ? kBrand50 : Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: isOpen || v > 0
-                                              ? kBrand700
-                                              : const Color(0xFFC5C6D4),
-                                          width: isOpen || v > 0 ? 2 : 1,
-                                        ),
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            '$letter ▼',
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 12,
-                                                color: kBrand950),
-                                          ),
-                                          Text(
-                                            v == 0 ? '0' : '$letter$v',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 12,
-                                              color: v > 0
-                                                  ? kBrand700
-                                                  : Colors.black38,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
+                              buildParityTile('G'),
+                              const SizedBox(width: 8),
+                              buildParityTile('P'),
+                              const SizedBox(width: 8),
+                              buildParityTile('C'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              buildParityTile('A'),
+                              const SizedBox(width: 8),
+                              buildParityTile('E'),
+                              const SizedBox(width: 8),
+                              buildParityTile('M'),
                             ],
                           ),
                           if (activeParityLetter != null) ...[
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              height: 46,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: 21,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 6),
-                                itemBuilder: (_, numVal) {
-                                  final letter = activeParityLetter!;
-                                  final selected =
-                                      (parsedParity.values[letter] ?? 0) ==
-                                          numVal;
-                                  return ChoiceChip(
-                                    selected: selected,
-                                    label: Text(
-                                      numVal == 0
-                                          ? '0 (Ocultar $letter)'
-                                          : '$letter$numVal',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 12),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                    color: kBrand700.withValues(alpha: 0.4)),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Selecionar $activeParityLetter (role 0–20)',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 12,
+                                          color: kBrand950,
+                                        ),
+                                      ),
+                                      TextButton(
+                                        style: TextButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 2),
+                                        ),
+                                        onPressed: () => setModalState(
+                                            () => activeParityLetter = null),
+                                        child: const Text(
+                                          'Concluir',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(
+                                    height: 132,
+                                    child: CupertinoPicker(
+                                      key: ValueKey<String>(activeParityLetter!),
+                                      scrollController:
+                                          FixedExtentScrollController(
+                                        initialItem: parsedParity
+                                                .values[activeParityLetter!] ??
+                                            0,
+                                      ),
+                                      itemExtent: 38,
+                                      magnification: 1.12,
+                                      useMagnifier: true,
+                                      selectionOverlay:
+                                          CupertinoPickerDefaultSelectionOverlay(
+                                        background:
+                                            kBrand50.withValues(alpha: 0.6),
+                                      ),
+                                      onSelectedItemChanged: (numVal) {
+                                        final letter = activeParityLetter!;
+                                        setModalState(() {
+                                          parsedParity.values[letter] = numVal;
+                                          parCtrl.text =
+                                              parsedParity.toSheetString();
+                                        });
+                                      },
+                                      children: [
+                                        for (int numVal = 0;
+                                            numVal <= 20;
+                                            numVal++)
+                                          Center(
+                                            child: Text(
+                                              numVal == 0
+                                                  ? '0 (oculta ${activeParityLetter!})'
+                                                  : '${activeParityLetter!}$numVal',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w900,
+                                                color: numVal == 0
+                                                    ? Colors.black45
+                                                    : kBrand950,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    onSelected: (_) {
-                                      setModalState(() {
-                                        parsedParity.values[letter] = numVal;
-                                        parCtrl.text =
-                                            parsedParity.toSheetString();
-                                      });
-                                    },
-                                  );
-                                },
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                           const SizedBox(height: 8),
-                          TextField(
-                            controller: parCtrl,
-                            onChanged: (v) {
-                              setModalState(() {
-                                parsedParity = ParsedParity.parse(v);
-                              });
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Texto na planilha',
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
+                          buildPreviewBox(
+                            parCtrl.text,
+                            emptyText: 'Nenhuma paridade selecionada',
                           ),
                         ],
                       ),
@@ -3185,60 +3403,91 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           ),
                           if (parsedAdmission.isDelivery) ...[
                             const SizedBox(height: 8),
-                            TextField(
-                              controller: TextEditingController(
-                                  text: parsedAdmission.birthDate),
-                              onChanged: (v) {
-                                parsedAdmission = ParsedAdmissionReason(
-                                  selectedOption:
-                                      parsedAdmission.selectedOption,
-                                  birthDate: v,
-                                  birthTime: parsedAdmission.birthTime,
-                                  extraText: parsedAdmission.extraText,
-                                );
-                                intCtrl.text = parsedAdmission.toSheetString();
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'Data do Nascimento (AAAA-MM-DD)',
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: TextEditingController(
-                                  text: parsedAdmission.birthTime),
-                              onChanged: (v) {
-                                parsedAdmission = ParsedAdmissionReason(
-                                  selectedOption:
-                                      parsedAdmission.selectedOption,
-                                  birthDate: parsedAdmission.birthDate,
-                                  birthTime: v,
-                                  extraText: parsedAdmission.extraText,
-                                );
-                                intCtrl.text = parsedAdmission.toSheetString();
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'Hora do Nascimento (HH:MM)',
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildNativePickerTile(
+                                    icon: Icons.calendar_today,
+                                    label: 'Data do Nascimento',
+                                    valueText: formatIsoDateBr(
+                                        parsedAdmission.birthDate),
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: ctx,
+                                        initialDate: parseIsoDateOrNow(
+                                            parsedAdmission.birthDate),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2035),
+                                      );
+                                      if (picked != null) {
+                                        final iso =
+                                            '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                                        setModalState(() {
+                                          parsedAdmission =
+                                              ParsedAdmissionReason(
+                                            selectedOption:
+                                                parsedAdmission.selectedOption,
+                                            birthDate: iso,
+                                            birthTime:
+                                                parsedAdmission.birthTime,
+                                            extraText:
+                                                parsedAdmission.extraText,
+                                          );
+                                          intCtrl.text =
+                                              parsedAdmission.toSheetString();
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: buildNativePickerTile(
+                                    icon: Icons.access_time,
+                                    label: 'Hora do Nascimento',
+                                    valueText:
+                                        parsedAdmission.birthTime.isNotEmpty
+                                            ? parsedAdmission.birthTime
+                                            : 'Selecionar hora',
+                                    onTap: () async {
+                                      final picked = await showTimePicker(
+                                        context: ctx,
+                                        initialTime: parseTimeOrDefault(
+                                            parsedAdmission.birthTime),
+                                        builder: (timeCtx, child) => MediaQuery(
+                                          data: MediaQuery.of(timeCtx).copyWith(
+                                              alwaysUse24HourFormat: true),
+                                          child: child!,
+                                        ),
+                                      );
+                                      if (picked != null) {
+                                        final hhmm =
+                                            '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                                        setModalState(() {
+                                          parsedAdmission =
+                                              ParsedAdmissionReason(
+                                            selectedOption:
+                                                parsedAdmission.selectedOption,
+                                            birthDate:
+                                                parsedAdmission.birthDate,
+                                            birthTime: hhmm,
+                                            extraText:
+                                                parsedAdmission.extraText,
+                                          );
+                                          intCtrl.text =
+                                              parsedAdmission.toSheetString();
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                           const SizedBox(height: 8),
-                          TextField(
-                            controller: intCtrl,
-                            onChanged: (v) {
-                              setModalState(() {
-                                parsedAdmission =
-                                    ParsedAdmissionReason.parse(v);
-                              });
-                            },
-                            decoration: const InputDecoration(
-                              labelText: 'Texto na planilha',
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
+                          buildPreviewBox(
+                            intCtrl.text,
+                            emptyText: 'Nenhum motivo de internação selecionado',
                           ),
                         ],
                       ),
@@ -3328,22 +3577,61 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            TextField(
-                              controller: remDateCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Data do lembrete (AAAA-MM-DD)',
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: remTimeCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Horário do aviso (HH:MM)',
-                                filled: true,
-                                fillColor: Colors.white,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildNativePickerTile(
+                                    icon: Icons.event,
+                                    label: 'Data do lembrete',
+                                    valueText:
+                                        formatIsoDateBr(remDateCtrl.text),
+                                    onTap: () async {
+                                      final picked = await showDatePicker(
+                                        context: ctx,
+                                        initialDate: parseIsoDateOrNow(
+                                            remDateCtrl.text),
+                                        firstDate: DateTime(2024),
+                                        lastDate: DateTime(2035),
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          remDateCtrl.text =
+                                              '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: buildNativePickerTile(
+                                    icon: Icons.alarm,
+                                    label: 'Horário do aviso',
+                                    valueText: remTimeCtrl.text.isNotEmpty
+                                        ? remTimeCtrl.text
+                                        : 'Selecionar hora',
+                                    onTap: () async {
+                                      final picked = await showTimePicker(
+                                        context: ctx,
+                                        initialTime: parseTimeOrDefault(
+                                            remTimeCtrl.text,
+                                            fallbackHour: 14),
+                                        builder: (timeCtx, child) => MediaQuery(
+                                          data: MediaQuery.of(timeCtx).copyWith(
+                                              alwaysUse24HourFormat: true),
+                                          child: child!,
+                                        ),
+                                      );
+                                      if (picked != null) {
+                                        setModalState(() {
+                                          remTimeCtrl.text =
+                                              '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             FilledButton.icon(
@@ -3545,14 +3833,15 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          tooltip: 'Editar cadastro',
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _openAddOrEditDoctorModal(context, doc);
-                          },
-                          icon: const Icon(Icons.edit, color: kBrand700),
-                        ),
+                        if (svc.isEditorMode)
+                          IconButton(
+                            tooltip: 'Editar cadastro',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _openAddOrEditDoctorModal(context, doc);
+                            },
+                            icon: const Icon(Icons.edit, color: kBrand700),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 14),
