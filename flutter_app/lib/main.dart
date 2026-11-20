@@ -223,6 +223,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
   }
 
   Future<void> _handleVerifyCrmAndPromptNotifications() async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final crmDigits = _crmCtrl.text.replaceAll(RegExp(r'\D'), '');
     if (crmDigits.isEmpty || crmDigits.length > 10) {
       setState(() {
@@ -239,6 +240,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
     final matchedDoc = await svc.verifyAndClaimDoctorByCrm(crmDigits);
     if (!mounted) return;
 
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _isLoading = false;
     });
@@ -289,6 +291,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
         actions: [
           TextButton(
             onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
               svc.notificationsEnabled = false;
               Navigator.pop(dCtx);
               setState(() => svc.hasCompletedOnboarding = true);
@@ -298,6 +301,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: kScRed600),
             onPressed: () async {
+              FocusManager.instance.primaryFocus?.unfocus();
               Navigator.pop(dCtx);
               await svc.requestNativeNotificationPermission(doctor: matchedDoc);
               setState(() => svc.hasCompletedOnboarding = true);
@@ -317,9 +321,12 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
 
     return Scaffold(
       backgroundColor: kBrand950,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 420),
@@ -640,11 +647,15 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                     TextField(
                       controller: _crmCtrl,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
                       maxLength: 10,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
                       ],
+                      onTapOutside: (_) =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
                       onSubmitted: (_) {
+                        FocusManager.instance.primaryFocus?.unfocus();
                         if (!_isLoading) {
                           _handleVerifyCrmAndPromptNotifications();
                         }
@@ -653,6 +664,12 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
                         labelText: 'Número do CRM',
                         hintText: 'Digite até 10 números (ex: 34669)',
                         prefixIcon: const Icon(Icons.badge_outlined),
+                        suffixIcon: IconButton(
+                          tooltip: 'Fechar teclado',
+                          onPressed: () =>
+                              FocusManager.instance.primaryFocus?.unfocus(),
+                          icon: const Icon(Icons.keyboard_hide_outlined),
+                        ),
                         filled: true,
                         fillColor: kContainerLow,
                         border: OutlineInputBorder(
@@ -707,6 +724,7 @@ class _OnboardingFlowScreenState extends State<OnboardingFlowScreen> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -2651,10 +2669,13 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                           child: TextField(
                             controller: crmCtrl,
                             keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
                             maxLength: 10,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
+                            onTapOutside: (_) =>
+                                FocusManager.instance.primaryFocus?.unfocus(),
                             decoration: const InputDecoration(
                               labelText: 'CRM (até 10 díg.)',
                               counterText: '',
@@ -2694,6 +2715,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                     TextField(
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone,
+                      textInputAction: TextInputAction.done,
+                      onTapOutside: (_) =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
                       decoration: const InputDecoration(
                         labelText: 'Telefone / Celular',
                         filled: true,
@@ -3349,7 +3373,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           controller: pinCtrl,
           obscureText: true,
           keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
           maxLength: 6,
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           decoration: const InputDecoration(
             hintText: 'Digite a senha de 6 dígitos',
           ),
@@ -4480,6 +4506,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
                             TextField(
                               controller: crmInputCtrl,
                               keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              onTapOutside: (_) =>
+                                  FocusManager.instance.primaryFocus?.unfocus(),
                               decoration: const InputDecoration(
                                 labelText: 'CRM do Profissional',
                                 isDense: true,
@@ -4620,7 +4649,9 @@ class _HomeShellScreenState extends State<HomeShellScreen> {
           controller: pinCtrl,
           obscureText: true,
           keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
           maxLength: 6,
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           decoration: const InputDecoration(hintText: 'Senha de 6 dígitos'),
         ),
         actions: [
